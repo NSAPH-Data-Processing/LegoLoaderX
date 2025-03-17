@@ -1,0 +1,5 @@
+var_groups: [gridmet]
+min_year: 2000
+max_year: 2020
+spatial_res: zcta
+temporal_res: daily
