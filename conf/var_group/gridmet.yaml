@@ -4,6 +4,6 @@ min_year: 2000
 max_year: 2020
 min_spatial_res: zcta
 min_temporal_res: daily
-input_path: data/lego/environmental/meteorology__gridmet/
-file_prefix: meteorology__gridmet
+lego_nm: meteorology__gridmet
+lego_dir: lego/environmental/
 long_fname: true # if true, filename matches pattern: {file_prefix}__{min_spatial_res}_{min_temporal_res}__{year}.parquet

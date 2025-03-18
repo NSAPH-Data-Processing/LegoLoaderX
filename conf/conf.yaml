@@ -5,9 +5,6 @@ defaults:
 
 # this should be set directly by script
 timestr: "20000101"
-# year: 2000
-# month: 1
-# day: 1
 var: tmmx
 
 spatial_res: zcta
@@ -15,7 +12,11 @@ temporal_res: daily
 
 vg_name: ${hydra:runtime.choices.var_group}
 
+input_dir: data/input/
 output_dir: data/output/
+
+uniqid_nm: us_uniqueid__census
+uniqid_dir: lego/geoboundaries/us_geoboundaries__census/
 
 hydra:
   run:

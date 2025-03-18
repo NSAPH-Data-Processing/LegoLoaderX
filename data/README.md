@@ -3,6 +3,7 @@
 Follow the following steps to create the necessary symlinks for this folder.
 
 ```
-cd data/
-ln -s /n/dominici_lab/lab/lego .
+mkdir data/input/
+cd data/input
+ln -s /n/dominici_lab/lab/lego data/input
 ```
