@@ -1,4 +1,4 @@
-var_groups: [gridmet]
+var_groups: [gridmet, pm25_ushap]
 min_year: 2000
 max_year: 2001
 max_days: 5 # just for testing purposes

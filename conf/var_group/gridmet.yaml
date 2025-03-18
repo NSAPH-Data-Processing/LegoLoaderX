@@ -6,4 +6,3 @@ min_spatial_res: zcta
 min_temporal_res: daily
 lego_nm: meteorology__gridmet
 lego_dir: lego/environmental/
-long_fname: true # if true, filename matches pattern: {file_prefix}__{min_spatial_res}_{min_temporal_res}__{year}.parquet

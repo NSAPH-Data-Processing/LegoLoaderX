@@ -57,5 +57,7 @@ def main(cfg):
     """
 
     duckdb.execute(query)
+
+    
 if __name__ == "__main__":
     main()
