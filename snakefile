@@ -35,14 +35,14 @@ for vg in config["var_groups"]:
 
         if var_map[vg]["temp_scale"] == "daily":
             var_map[vg]["date_range"] = [(d.year, d.month, d.day) for d in date_range]
-            #var_map[vg]["date_range"] = [(y, m, 1) for y in range(min_year_curr, max_year_curr + 1) for m in range(1, 13)]
-            print(var_map[vg]["date_range"][1:15])
-            output_file_lst += expand("data/output/{var_group}__{var}__{year}{month:02d}{day:02d}.parquet",
-                                        var_group=vg,
-                                        var=[v for v in vg_cfg["vars"]],
-                                        year=[y for y, m, d in var_map[vg]["date_range"]],
-                                        month=[m for y, m, d in var_map[vg]["date_range"]],
-                                        day=[d for y, m, d in var_map[vg]["date_range"]])
+            # iterate through valid y/m/d combos, expand vars within each
+            for y,m,d in var_map[vg]["date_range"]:
+                output_file_lst += expand("data/output/{var_group}__{var}__{year}{month:02d}{day:02d}.parquet",
+                                            var_group=vg,
+                                            var=[v for v in vg_cfg["vars"]],
+                                            year=y,
+                                            month=m,
+                                            day=d)
         elif var_map[vg]["temp_scale"] == "monthly":
             var_map[vg]["date_range"] = [(y, m) for y in range(min_year_curr, max_year_curr + 1) for m in range(1, 13)]
             output_file_lst += expand("data/output/{var_group}__{var}__{year}{month:02d}.parquet",
@@ -57,8 +57,6 @@ for vg in config["var_groups"]:
                 var=[v for v in vg_cfg["vars"]],
                 year=[y for y in var_map[vg]["date_range"]])
         f.close()
-
-print("finished with setup")
 
 # Expand over all valid combinations of variable groups, variables, and dates
 rule all:
