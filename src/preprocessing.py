@@ -1,32 +1,44 @@
 import duckdb
 import hydra
-import pandas as pd
 
 
-@hydra.main(config_path="../conf", config_name="config", version_base=None)
+@hydra.main(config_path="../conf", config_name="conf", version_base=None)
 def main(cfg):
-    # getting input filepath
-    input_fname = f"{cfg.input_path}/{cfg.file_prefix}__{cfg.spatial_res}_{cfg.temporal_res}__{cfg.year}.parquet"
-
-    output_fname = f"{cfg.output_path}/{cfg.var_group}__{cfg.var}__{cfg.year}"
-    if cfg.temporal_res == "monthly":
-        output_fname += str(cfg.month)
+    month,day = None, None
+    timestr = str(cfg.timestr)
+    year = timestr[:4]
+    if cfg.temporal_res == "monthly" or cfg.temporal_res == "daily":
+        month = timestr[4:6]
     if cfg.temporal_res == "daily":
-        output_fname += str(cfg.day)
+        day = timestr[6:8]
+
+    # getting input filepath
+    cfg_vg = cfg.var_group
+    input_fname = f"{cfg_vg.input_path}/{cfg.spatial_res}_{cfg.temporal_res}/{cfg_vg.file_prefix}__{cfg.spatial_res}_{cfg.temporal_res}__{year}.parquet"
+
+    # setting output filepath
+    output_fname = f"{cfg.output_dir}/{cfg.vg_name}__{cfg.var}__{year}"
+    if month:
+        output_fname += str(month).zfill(2)
+    if day:
+        output_fname += str(day).zfill(2)
     output_fname += ".parquet"
 
-
-    query = f"""
+    # setting duckdb query
+    query_base = f"""
     COPY (
-        SELECT spatial_res, var
-        FROM read_parquet('{input_fname}') 
-        WHERE year = {cfg.year}
-          AND month = {cfg.month}
-          AND day = {cfg.day}
-    ) TO '{output_fname}' (FORMAT 'parquet');
-    """
+        SELECT {cfg.spatial_res}, {cfg.var}
+        FROM read_parquet('{input_fname}') \n"""
+    if day:
+        query_date = f"WHERE date = '{year}-{month}-{day}'\n"
+    elif month:
+        query_date = f"WHERE year = '{year}' AND month = '{month}'\n"
+    elif year:
+        query_date = f"WHERE year = '{year}'\n"
 
-    return None
+    query = query_base + query_date + f""") TO '{output_fname}' (FORMAT 'parquet');"""
+
+    duckdb.execute(query)
 
 if __name__ == "__main__":
     main()

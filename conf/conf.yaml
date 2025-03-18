@@ -1,17 +1,19 @@
 
 defaults:
   - _self_
-  - pipeline
   - var_group: gridmet
 
 # this should be set directly by script
-year: 2000
-month: 1
-day: 1
+timestr: "20000101"
+# year: 2000
+# month: 1
+# day: 1
 var: tmmx
 
 spatial_res: zcta
 temporal_res: daily
+
+vg_name: ${hydra:runtime.choices.var_group}
 
 output_dir: data/output/
 
