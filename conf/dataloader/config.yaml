@@ -1,3 +1,10 @@
 var_groups: [gridmet, pm25_ushap]
 min_year: 2000
 max_year: 2001
+data_dir: data/output/
+verbose: true
+
+
+hydra:
+  run:
+    dir: logs/dataloader/${now:%Y-%m-%d}/${now:%H-%M-%S}
