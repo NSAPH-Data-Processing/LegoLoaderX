@@ -22,7 +22,7 @@ class VarsHealthxDataset(Dataset):
         self.root_dir = root_dir
         self.transform = transform
         self.var_dict = var_dict
-        all_dates = pd.date_range(f"{min(years)}-01-01", f"{max(years)}-12-31", freq="D")
+        all_dates = pd.date_range(f"{min_year}-01-01", f"{max_year}-12-31", freq="D")
         self.yyyymmdd = [f"{d.year}{d.month:02d}{d.day:02d}"  for d in all_dates]
 
     def __len__(self):

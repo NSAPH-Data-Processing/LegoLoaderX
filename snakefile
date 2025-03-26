@@ -1,6 +1,7 @@
 # Load Hydra configs using yaml
 import yaml
 import pandas as pd
+import math
 
 # Load config
 configfile: "conf/snakemake.yaml"
@@ -31,7 +32,7 @@ for vg in config["var_groups"]:
         date_range = pd.date_range(f"{min_year_curr}-01-01", f"{max_year_curr}-12-31", freq="D")
 
         if var_map[vg]["temporal_res"] == "daily":
-            var_map[vg]["date_range"] = [(d.year, d.month, d.day) for d in date_range][:5]
+            var_map[vg]["date_range"] = [(d.year, d.month, d.day) for d in date_range]
             if config["max_days"]: 
                 var_map[vg]["date_range"] = var_map[vg]["date_range"][:int(config["max_days"])]
             # iterate through valid y/m/d combos, expand vars within each

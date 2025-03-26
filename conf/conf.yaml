@@ -1,6 +1,7 @@
 defaults:
   - _self_
   - var_group: gridmet
+  - datapaths: datapaths_cannon
 
 # this should be set directly by script
 timestr: "20000101"

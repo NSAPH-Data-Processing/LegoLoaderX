@@ -1,0 +1,6 @@
+name: local
+
+dirs:
+  input: 
+    lego: /n/dominici_lab/lab/lego
+  output: null

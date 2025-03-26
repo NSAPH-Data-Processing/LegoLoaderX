@@ -1,0 +1,6 @@
+name: null
+
+dirs:
+  input:
+    lego: /n/dominici_lab/lab/lego
+  output: /n/netscratch/dominici_lab/Lab/jkitch/jkitch_LegoLoaderX/output
