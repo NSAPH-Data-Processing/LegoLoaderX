@@ -9,5 +9,9 @@ conda env create -f requirements.yaml
 ```
 
 ### Datapaths and symlinks
-See `data/README.md` for instructions on how to create a symlink for the `lego` folder, as well as other necessary symlinks.
+The default datapaths and associated symlinks are stored in `conf/datapaths/datapaths_cannon.yaml`. To create the necessary symlinks:
+
+```
+python3 src/create_dir_paths.p
+```
 
