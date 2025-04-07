@@ -37,7 +37,7 @@ for vg in config["var_groups"]:
                 var_map[vg]["date_range"] = var_map[vg]["date_range"][:int(config["max_days"])]
             # iterate through valid y/m/d combos, expand vars within each
             for y,m,d in var_map[vg]["date_range"]:
-                output_file_lst += expand("data/output/{var_group}__{var}__{year}{month:02d}{day:02d}.parquet",
+                output_file_lst += expand("data/output/{var_group}/{var}/{var}__{year}{month:02d}{day:02d}.parquet",
                                             var_group=vg,
                                             var=[v for v in vg_cfg["vars"]],
                                             year=y,
@@ -45,14 +45,14 @@ for vg in config["var_groups"]:
                                             day=d)
         elif var_map[vg]["temporal_res"] == "monthly":
             var_map[vg]["date_range"] = [(y, m) for y in range(min_year_curr, max_year_curr + 1) for m in range(1, 13)]
-            output_file_lst += expand("data/output/{var_group}__{var}__{year}{month:02d}.parquet",
+            output_file_lst += expand("data/output/{var_group}/{var}/{var}__{year}{month:02d}.parquet",
                             var_group=vg,
                             var=[v for v in vg_cfg["vars"]],
                             year=[y for y, m in var_map[vg]["date_range"]],
                             month=[m for y, m in var_map[vg]["date_range"]])
         else:
             var_map[vg]["date_range"] = [y for y in range(min_year_curr, max_year_curr + 1)]
-            output_file_lst += expand("data/output/{var_group}__{var}__{year}.parquet",
+            output_file_lst += expand("data/output/{var_group}/{var}/{var}__{year}.parquet",
                 var_group=vg,
                 var=[v for v in vg_cfg["vars"]],
                 year=[y for y in var_map[vg]["date_range"]])
@@ -66,7 +66,7 @@ rule all:
 # have excluded input entry for now
 rule preprocess:
     output:
-        "data/output/{var_group}__{var}__{timestring}.parquet"
+        "data/output/{var_group}/{var}/{var}__{timestring}.parquet"
     params:
         script="src/preprocessing.py"
     run:
