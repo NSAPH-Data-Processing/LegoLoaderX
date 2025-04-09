@@ -9,6 +9,6 @@ vars: [
 min_year: 2000
 max_year: 2020
 min_spatial_res: zcta
-min_temporal_res: daily
-lego_nm: climate_types__koppen_geiger/present
-lego_dir: lego/environmental/
+min_temporal_res: yearly
+lego_nm: climate_types__koppen_geiger__zcta_yearly
+lego_dir: lego/environmental/climate_types__koppen_geiger/present/zcta_yearly/

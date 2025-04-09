@@ -3,5 +3,5 @@ min_year: 2000
 max_year: 2020
 min_spatial_res: zcta
 min_temporal_res: daily
-lego_nm: pm25__ushap
-lego_dir: lego/environmental/
+lego_nm: pm25__ushap__zcta_daily
+lego_dir: lego/environmental/pm25__ushap/zcta_daily/

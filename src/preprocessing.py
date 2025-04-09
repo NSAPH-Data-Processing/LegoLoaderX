@@ -30,7 +30,7 @@ def main(cfg):
 
     # getting input filepath
     cfg_vg = cfg.var_group
-    input_fname = f"{cfg.input_dir}/{cfg_vg.lego_dir}/{cfg_vg.lego_nm}/{cfg.spatial_res}_{cfg.temporal_res}/{cfg_vg.lego_nm}__{cfg.spatial_res}_{cfg.temporal_res}__{year}.parquet"
+    input_fname = f"{cfg.input_dir}/{cfg_vg.lego_dir}/{cfg_vg.lego_nm}__{year}.parquet"
 
     # setting output filepath
     out_dir = f"{cfg.output_dir}/{cfg.vg_name}/{cfg.var}/"
