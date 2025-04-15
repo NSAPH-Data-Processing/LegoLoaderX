@@ -39,7 +39,7 @@ class VarsHealthxDataset(Dataset):
             elif self.var_dict[var_group]["temporal_res"] == "monthly":
                 date_str = date_str[:6]
             for var in self.var_dict[var_group]["vars"]:
-                filename = f"{self.root_dir}/{var_group}/{var}__{date_str}.parquet"
+                filename = f"{self.root_dir}/{var_group}/{var}/{var}__{date_str}.parquet"
                 layers.append(duckdb.query(f"SELECT {var} FROM '{filename}'").fetchdf()[var].tolist())
 
         tensor = torch.FloatTensor(np.stack(layers, axis=0))

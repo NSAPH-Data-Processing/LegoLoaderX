@@ -1,4 +1,4 @@
-var_groups: [gridmet, pm25_ushap]
+var_groups: [gridmet, pm25_ushap, aqdh]
 min_year: 2000
 max_year: 2001
 data_dir: data/output/
