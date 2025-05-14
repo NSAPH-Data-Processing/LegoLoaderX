@@ -1,0 +1,9 @@
+var_group_name: census
+vars: [population, median_age, pop_under_20_years, pop_35_49_years, pop_50_64_years, pop_over_65_years, pop_white, pop_black, pop_native, pop_asian, pop_hispanic, pop_non_us_citizen, pop_higher_education_enrolled, pop_higher_education_attained, pop_poverty, housing_units, housing_occupied, housing_renter_occupied, housing_owner_occupied, median_home_value, median_household_income]
+min_year: 2000
+max_year: 2020
+min_spatial_res: zcta
+min_temporal_res: yearly
+lego_nm: demographics__census
+sub_lego_nm: core
+lego_dir: lego/social/
