@@ -39,7 +39,7 @@ class VarsHealthxDataset(Dataset):
             elif self.var_dict[var_group]["temporal_res"] == "monthly":
                 date_str = date_str[:6]
             for var in self.var_dict[var_group]["vars"]:
-                filename = f"{self.root_dir}/{var_group}__{var}__{date_str}.parquet"
+                filename = f"{self.root_dir}/{var_group}/{var}/{var}__{date_str}.parquet"
                 layers.append(duckdb.query(f"SELECT {var} FROM '{filename}'").fetchdf()[var].tolist())
 
         tensor = torch.FloatTensor(np.stack(layers, axis=0))
@@ -50,8 +50,11 @@ class VarsHealthxDataset(Dataset):
         return tensor
     
 # compute the means and standard deviations without storing all the data
-def compute_stats(loader, var_lst):
-    # do not sum nans
+def compute_summary(loader):
+    var_dict = loader.dataset.var_dict
+    var_lst = [var for source in var_dict.values() for var in source['vars']]
+    
+    totals_nan = torch.zeros(len(var_lst))
     totals_sum = torch.zeros(len(var_lst))
     totals_ss = torch.zeros(len(var_lst))
     totals_n = torch.zeros(len(var_lst))
@@ -59,11 +62,9 @@ def compute_stats(loader, var_lst):
     # also keep track of time
     start_time = time.time()
 
-    input_size = None
     # iterate through
     for batch in tqdm(loader):
-        if input_size is None:
-            input_size = batch.shape[2]
+        totals_nan += torch.isnan(batch).sum(dim=(0, 2))
         totals_n += (~torch.isnan(batch)).sum(dim=(0, 2))
         x = torch.nan_to_num(batch, nan=0.0)
         totals_sum += x.sum(dim=(0, 2))
@@ -76,14 +77,16 @@ def compute_stats(loader, var_lst):
     stds = torch.sqrt(totals_ss / totals_n - means**2)
 
     # conver to dict with components as keys
+    nans_dict = {component: float(nan) for component, nan in zip(var_lst, totals_nan)}
     means_dict = {component: float(mean) for component, mean in zip(var_lst, means)}
     stds_dict = {component: float(std) for component, std in zip(var_lst, stds)}
 
     # save to file
-    summary = {"means": means_dict, 
-               "stds": stds_dict, 
-               "elapsed_time": elapsed_time, 
-               "input_grid_size": input_size}
+    summary = {
+        "nans": nans_dict,
+        "means": means_dict, 
+        "stds": stds_dict, 
+        "elapsed_time": elapsed_time}
     return(summary)
 
 
@@ -92,7 +95,6 @@ def main(cfg: DictConfig):
     """This script tests the dataloader and saves aggregate statistics in a summary file."""
 
     var_dict = {}
-    var_lst = []
 
     # iterate through variable groups and collect names of all variables
     for vg in cfg.var_groups:
@@ -101,7 +103,6 @@ def main(cfg: DictConfig):
             vg_cfg = yaml.safe_load(f)
             # get variable names
             var_dict[vg]["vars"] = vg_cfg["vars"]
-            var_lst += vg_cfg["vars"]
             # store spatial and temporal res
             var_dict[vg]["temporal_res"] = vg_cfg["min_temporal_res"]
             var_dict[vg]["spatial_res"] = vg_cfg["min_spatial_res"]
@@ -130,7 +131,11 @@ def main(cfg: DictConfig):
 
     # test loader ability
     if cfg.verbose:
-        compute_stats(loader, var_lst)
+        summary = compute_summary(loader)
+        print(summary["nans"])
+        print(summary["means"])
+        print(summary["stds"])
+        print(f"Elapsed time: {summary['elapsed_time']:.2f} seconds")
 
 
 

@@ -4,5 +4,5 @@ min_year: 2000
 max_year: 2016
 min_spatial_res: zcta
 min_temporal_res: daily
-lego_nm: air_pollution__aqdh
-lego_dir: lego/environmental/
+lego_nm: air_pollution__aqdh__zcta_daily
+lego_dir: lego/environmental/air_pollution__aqdh/zcta_daily/
