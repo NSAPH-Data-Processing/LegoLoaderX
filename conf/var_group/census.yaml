@@ -4,6 +4,5 @@ min_year: 2000
 max_year: 2020
 min_spatial_res: zcta
 min_temporal_res: yearly
-lego_nm: demographics__census
-sub_lego_nm: core
-lego_dir: lego/social/
+lego_nm: demographics__census__core__zcta_yearly
+lego_dir: lego/social/core/zcta_yearly/
