@@ -9,6 +9,8 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 import duckdb
 import yaml
+import pickle as pkl
+import os
 
 class VarsHealthxDataset(Dataset):
     def __init__(
@@ -135,6 +137,12 @@ def main(cfg: DictConfig):
         print(summary["nans"])
         print(summary["means"])
         print(summary["stds"])
+
+        # save dictionary
+        os.makedirs(f"{cfg.data_dir}/{cfg.summary_stats_dir}", exist_ok=True)
+        with open(f'{cfg.data_dir}/{cfg.summary_stats_dir}/{cfg.summary_stats_nm}.pkl', 'wb') as f:
+            pkl.dump(summary, f, protocol=pkl.HIGHEST_PROTOCOL)
+
         print(f"Elapsed time: {summary['elapsed_time']:.2f} seconds")
 
 
