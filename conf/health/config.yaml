@@ -1,0 +1,26 @@
+ #strata: [] # Strata will not be used
+
+#conf
+var_group: health
+vg_name: health
+
+#timestr: "20000101" will not be used
+var: I10
+
+spatial_res: zcta
+temporal_res: daily
+
+input_dir: data/input/
+output_dir: data/output/
+
+#var_group
+min_year: 2000
+max_year: 2015
+min_spatial_res: zcta
+min_temporal_res: daily
+lego_nm: sparse_counts
+lego_dir: lego/medicare/medpar_icd_codes/zcta_daily/
+
+hydra:
+  run:
+    dir: logs/dataloader/${now:%Y-%m-%d}/${now:%H-%M-%S}
