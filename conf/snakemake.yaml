@@ -1,4 +1,4 @@
-var_groups: [gridmet, pm25_ushap]
+var_groups: [gridmet, pm25_ushap, census, climate_types, aqdh]
 min_year: 2000
 max_year: 2020
 max_days: null # just for testing purposes
