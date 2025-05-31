@@ -4,3 +4,4 @@ dirs:
   input:
     lego: /n/dominici_nsaph_l3/Lab/lego
   output: /n/dominici_nsaph_l3/Lab/lego_loader_x/output
+  health: /n/dominici_nsaph_l3/Lab/lego_loader_x/health

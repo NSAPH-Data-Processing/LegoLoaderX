@@ -4,14 +4,14 @@
 var_group: health
 vg_name: health
 
-#timestr: "20000101" will not be used
+#timestr: "20000101" # Timestr will not be used
 var: I10
 
 spatial_res: zcta
 temporal_res: daily
 
 input_dir: data/input/
-output_dir: data/output/
+output_dir: data/
 
 #var_group
 min_year: 2000

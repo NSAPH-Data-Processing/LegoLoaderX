@@ -1,7 +1,9 @@
+from datetime import date, timedelta
 import duckdb
 import hydra
 import os
 import logging
+import calendar
 
 # Configure logging
 LOGGER = logging.getLogger(__name__)
@@ -10,7 +12,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-@hydra.main(config_path="../conf/health", config_name="conf", version_base=None)
+@hydra.main(config_path="../conf/health", config_name="config", version_base=None)
 def main(cfg):
     """
     Preprocess health data for data loader.
@@ -18,56 +20,103 @@ def main(cfg):
     Only zcta daily data is supported (with hardcoded vars)
     """
     
-    # setting up duckdb connection
     conn = duckdb.connect()
 
     LOGGER.info(f"Processing data for icd code {cfg.var}")
-    # setting output filepath
-    out_dir = f"{cfg.output_dir}/{cfg.vg_name}/{cfg.var}/"
+    input_files = f"{cfg.input_dir}/{cfg.lego_dir}/{cfg.lego_nm}_*.parquet"
+    output_folder = f"{cfg.output_dir}/{cfg.vg_name}/{cfg.var}/"
+    os.makedirs(output_folder, exist_ok=True)
 
     years_list = list(range(cfg.min_year, cfg.max_year + 1))
     for year in years_list:
         LOGGER.info(f"Processing year {year}")
-        # getting input filepaths
-        input_fname = f"{cfg.input_dir}/{cfg.lego_dir}/{cfg.lego_nm}__{year}.parquet"
-        output_folder = f"{cfg.out_dir}/{cfg.var}"
-        mkdirs = os.makedirs(output_folder, exist_ok=True)
 
-        for day in range(1, 366):
-            # Constructing the date string
-            date_str = f"{year}-{str(day).zfill(3)}"
-            output_fname = f"{out_dir}/{cfg.var}__{date_str}.parquet"
+        # get days list for a given year with calendar days
+        days_list = [(year, month, day) for month in range(1, 13) for day in range(1, calendar.monthrange(year, month)[1] + 1)]
+        for day in days_list:
+            date_str = f"{day[0]}{day[1]:02d}{day[2]:02d}"
+            output_fname = f"{output_folder}/{cfg.var}__{date_str}.parquet"
+            
+            LOGGER.info(f"Processing date {date_str}")
+            # Obtain icd counts for all zcta for a given day and in the next x days
+            t = date(day[0], day[1], day[2])
+            t90 = t + timedelta(days=90)
 
-            # Check if the output file already exists
-            if os.path.exists(output_fname):
-                LOGGER.info(f"Output file {output_fname} already exists. Skipping.")
-                continue
-
-            # Query to create index table
+            # Select all dates with a positive n value for the given icd code in the 90 day window
             conn.execute(f"""
-                CREATE TABLE index AS 
-                SELECT zcta, DATE '{date_str}' AS date
-                FROM read_parquet('{cfg.input_dir}/{cfg.uniqid_dir}/{cfg.uniqid_nm}/{cfg.spatial_res}_yearly/{cfg.uniqid_nm}__{cfg.spatial_res}_yearly__{year}.parquet')
-                WHERE continental_us = TRUE
-                ORDER BY zcta
+            CREATE OR REPLACE TABLE index AS
+            SELECT
+                zcta, 
+                date
+            FROM read_parquet('{input_files}')
+            WHERE 
+                icd10 = '{cfg.var}' AND 
+                date >= DATE '{t}' AND
+                date <= DATE '{t90}'
+            ORDER BY zcta, date
+            """)
+            
+            conn.execute(f"""
+            CREATE OR REPLACE TABLE n AS
+            SELECT 
+                zcta, 
+                date, 
+                n
+            FROM read_parquet('{input_files}')
+            WHERE 
+                icd10 = '{cfg.var}' AND 
+                date = DATE '{t}'
+            ORDER BY zcta
             """)
 
-            # Query to copy data into output file
             conn.execute(f"""
-                COPY (
-                    SELECT i.zcta, d.{cfg.var}
-                    FROM index i
-                    JOIN read_parquet('{input_fname}') d 
-                    ON (i.zcta = d.zcta AND i.date = d.date)
-                ) TO '{output_fname}' (FORMAT PARQUET);
+            CREATE OR REPLACE TABLE n90 AS
+            WITH i90 AS (
+                SELECT 
+                    zcta, 
+                    date,
+                    n as n90
+                FROM read_parquet('{input_files}')
+                WHERE 
+                    icd10 = '{cfg.var}' AND 
+                    date >= DATE '{t}' AND
+                    date <= DATE '{t90}'
+            )
+            SELECT 
+                zcta, 
+                date,
+                SUM(n90) AS n90
+            FROM i90
+            GROUP BY zcta, date
+            ORDER BY zcta, date
             """)
-            LOGGER.info(f"Data for {date_str} written to {output_fname}")
 
-
-        os.makedirs(out_dir, exist_ok=True)
-        # 
-    
-
+            # Join the tables and write to output
+            conn.execute(f"""
+            CREATE OR REPLACE TABLE output AS
+            WITH i AS ( 
+                SELECT 
+                    index.zcta, 
+                    index.date, 
+                    COALESCE(n.n, 0) AS n
+                FROM index
+                LEFT JOIN n ON index.zcta = n.zcta AND index.date = n.date
+            )
+            SELECT 
+                i.zcta, 
+                i.date, 
+                i.n AS n,
+                COALESCE(n90.n90,0) AS n90
+            FROM i
+            LEFT JOIN n90 ON i.zcta = n90.zcta AND i.date = n90.date
+            """)
+            
+            LOGGER.info(f"Writing output to {output_fname}")
+            conn.execute(f"""
+            COPY output TO '{output_fname}' (FORMAT PARQUET)
+            """)
+    LOGGER.info("Processing complete.")
+    conn.close()
     
 if __name__ == "__main__":
     main()
