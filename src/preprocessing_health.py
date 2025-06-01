@@ -4,6 +4,8 @@ import hydra
 import os
 import logging
 import calendar
+from tqdm import tqdm
+
 
 # Configure logging
 LOGGER = logging.getLogger(__name__)
@@ -27,94 +29,96 @@ def main(cfg):
     output_folder = f"{cfg.output_dir}/{cfg.vg_name}/{cfg.var}/"
     os.makedirs(output_folder, exist_ok=True)
 
-    years_list = list(range(cfg.min_year, cfg.max_year + 1))
-    for year in years_list:
-        LOGGER.info(f"Processing year {year}")
+    year = cfg.year
+    lags = cfg.lags
+    LOGGER.info(f"Processing year {year}")
 
-        # get days list for a given year with calendar days
-        days_list = [(year, month, day) for month in range(1, 13) for day in range(1, calendar.monthrange(year, month)[1] + 1)]
-        for day in days_list:
-            date_str = f"{day[0]}{day[1]:02d}{day[2]:02d}"
-            output_fname = f"{output_folder}/{cfg.var}__{date_str}.parquet"
-            
-            LOGGER.info(f"Processing date {date_str}")
-            # Obtain icd counts for all zcta for a given day and in the next x days
-            t = date(day[0], day[1], day[2])
-            t90 = t + timedelta(days=90)
+    # get days list for a given year with calendar days
+    days_list = [(year, month, day) for month in range(1, 13) for day in range(1, calendar.monthrange(year, month)[1] + 1)]
+    for day in tqdm(days_list, desc="Processing days"):
+        date_str = f"{day[0]}{day[1]:02d}{day[2]:02d}"
+        output_fname = f"{output_folder}/{cfg.var}__{date_str}.parquet"
 
-            # Select all dates with a positive n value for the given icd code in the 90 day window
+        # LOGGER.info(f"Processing date {date_str}")
+        t = date(day[0], day[1], day[2])
+        # Create index of all zcta + date in a relevant time window
+        max_lag = max(lags)
+        t_max = t + timedelta(days=max_lag)
+        
+        conn.execute(f"""
+        CREATE OR REPLACE TABLE index AS
+        SELECT DISTINCT zcta, date
+        FROM read_parquet('{input_files}')
+        WHERE 
+            icd10 = '{cfg.var}' AND 
+            date >= DATE '{t}' AND
+            date <= DATE '{t_max}'
+        ORDER BY zcta, date
+        """)
+
+        conn.execute(f"""
+        CREATE OR REPLACE TABLE n AS
+        SELECT 
+            zcta, 
+            date, 
+            n
+        FROM read_parquet('{input_files}')
+        WHERE 
+            icd10 = '{cfg.var}' AND 
+            date = DATE '{t}'
+        ORDER BY zcta
+        """)
+
+        # Initialize base output (index)
+        conn.execute(f"""
+        CREATE OR REPLACE TABLE output AS
+        SELECT 
+            index.zcta, 
+            index.date, 
+            COALESCE(n.n, 0) AS n
+        FROM index
+        LEFT JOIN n ON index.zcta = n.zcta AND index.date = n.date
+        """)
+
+        # For each lag, create n_lag and join it
+        for lag in lags:
+            t_lag = t + timedelta(days=lag)
             conn.execute(f"""
-            CREATE OR REPLACE TABLE index AS
-            SELECT
+            CREATE OR REPLACE TABLE n_{lag} AS
+            WITH i_{lag} AS (
+            SELECT 
                 zcta, 
-                date
+                date, 
+                n AS n_{lag}
             FROM read_parquet('{input_files}')
             WHERE 
                 icd10 = '{cfg.var}' AND 
                 date >= DATE '{t}' AND
-                date <= DATE '{t90}'
-            ORDER BY zcta, date
-            """)
-            
-            conn.execute(f"""
-            CREATE OR REPLACE TABLE n AS
-            SELECT 
+                date <= DATE '{t_lag}'
+                )
+            SELECT
                 zcta, 
                 date, 
-                n
-            FROM read_parquet('{input_files}')
-            WHERE 
-                icd10 = '{cfg.var}' AND 
-                date = DATE '{t}'
-            ORDER BY zcta
-            """)
-
-            conn.execute(f"""
-            CREATE OR REPLACE TABLE n90 AS
-            WITH i90 AS (
-                SELECT 
-                    zcta, 
-                    date,
-                    n as n90
-                FROM read_parquet('{input_files}')
-                WHERE 
-                    icd10 = '{cfg.var}' AND 
-                    date >= DATE '{t}' AND
-                    date <= DATE '{t90}'
-            )
-            SELECT 
-                zcta, 
-                date,
-                SUM(n90) AS n90
-            FROM i90
+                SUM(n_{lag}) AS n_{lag}
+            FROM i_{lag}
             GROUP BY zcta, date
             ORDER BY zcta, date
             """)
 
-            # Join the tables and write to output
             conn.execute(f"""
             CREATE OR REPLACE TABLE output AS
-            WITH i AS ( 
-                SELECT 
-                    index.zcta, 
-                    index.date, 
-                    COALESCE(n.n, 0) AS n
-                FROM index
-                LEFT JOIN n ON index.zcta = n.zcta AND index.date = n.date
-            )
             SELECT 
-                i.zcta, 
-                i.date, 
-                i.n AS n,
-                COALESCE(n90.n90,0) AS n90
-            FROM i
-            LEFT JOIN n90 ON i.zcta = n90.zcta AND i.date = n90.date
+                o.*, 
+                COALESCE(n_{lag}.n_{lag}, 0) AS n_{lag}
+            FROM output o
+            LEFT JOIN n_{lag} ON o.zcta = n_{lag}.zcta AND o.date = n_{lag}.date
             """)
-            
-            LOGGER.info(f"Writing output to {output_fname}")
-            conn.execute(f"""
-            COPY output TO '{output_fname}' (FORMAT PARQUET)
-            """)
+        
+        # Save final result
+        conn.execute(f"""
+        COPY output TO '{output_fname}' (FORMAT PARQUET)
+        """)
+
     LOGGER.info("Processing complete.")
     conn.close()
     
