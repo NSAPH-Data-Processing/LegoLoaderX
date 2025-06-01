@@ -30,7 +30,7 @@ def main(cfg):
     os.makedirs(output_folder, exist_ok=True)
 
     year = cfg.year
-    lags = cfg.lags
+    horizons = cfg.horizons
     LOGGER.info(f"Processing year {year}")
 
     # get days list for a given year with calendar days
@@ -39,87 +39,54 @@ def main(cfg):
         date_str = f"{day[0]}{day[1]:02d}{day[2]:02d}"
         output_fname = f"{output_folder}/{cfg.var}__{date_str}.parquet"
 
-        # LOGGER.info(f"Processing date {date_str}")
         t = date(day[0], day[1], day[2])
-        # Create index of all zcta + date in a relevant time window
-        max_lag = max(lags)
-        t_max = t + timedelta(days=max_lag)
-        
-        conn.execute(f"""
-        CREATE OR REPLACE TABLE index AS
-        SELECT DISTINCT zcta, date
-        FROM read_parquet('{input_files}')
-        WHERE 
-            icd10 = '{cfg.var}' AND 
-            date >= DATE '{t}' AND
-            date <= DATE '{t_max}'
-        ORDER BY zcta, date
-        """)
 
-        conn.execute(f"""
-        CREATE OR REPLACE TABLE n AS
-        SELECT 
-            zcta, 
-            date, 
-            n
-        FROM read_parquet('{input_files}')
-        WHERE 
-            icd10 = '{cfg.var}' AND 
-            date = DATE '{t}'
-        ORDER BY zcta
-        """)
+        # Build queries for each horizon, starting with same-day (horizon = 0)
+        queries = []
 
-        # Initialize base output (index)
-        conn.execute(f"""
-        CREATE OR REPLACE TABLE output AS
-        SELECT 
-            index.zcta, 
-            index.date, 
-            COALESCE(n.n, 0) AS n
-        FROM index
-        LEFT JOIN n ON index.zcta = n.zcta AND index.date = n.date
-        """)
-
-        # For each lag, create n_lag and join it
-        for lag in lags:
-            t_lag = t + timedelta(days=lag)
-            conn.execute(f"""
-            CREATE OR REPLACE TABLE n_{lag} AS
-            WITH i_{lag} AS (
+        # Same-day count (horizon = 0)
+        queries.append(f"""
             SELECT 
                 zcta, 
-                date, 
-                n AS n_{lag}
-            FROM read_parquet('{input_files}')
-            WHERE 
+                0 AS horizon, 
+                n
+            FROM '{input_files}'
+            WHERE
                 icd10 = '{cfg.var}' AND 
-                date >= DATE '{t}' AND
-                date <= DATE '{t_lag}'
-                )
-            SELECT
-                zcta, 
-                date, 
-                SUM(n_{lag}) AS n_{lag}
-            FROM i_{lag}
-            GROUP BY zcta, date
-            ORDER BY zcta, date
-            """)
-
-            conn.execute(f"""
-            CREATE OR REPLACE TABLE output AS
-            SELECT 
-                o.*, 
-                COALESCE(n_{lag}.n_{lag}, 0) AS n_{lag}
-            FROM output o
-            LEFT JOIN n_{lag} ON o.zcta = n_{lag}.zcta AND o.date = n_{lag}.date
-            """)
-        
-        # Save final result
-        conn.execute(f"""
-        COPY output TO '{output_fname}' (FORMAT PARQUET)
+                date = DATE '{t}'
         """)
 
-    LOGGER.info("Processing complete.")
+        # Future horizons
+        for horizon in horizons:
+            t_end = t + timedelta(days=horizon)
+            queries.append(f"""
+                SELECT 
+                    zcta, 
+                    {horizon} AS horizon, 
+                    SUM(n) AS n
+                FROM '{input_files}'
+                WHERE 
+                    icd10 = '{cfg.var}' AND 
+                    date >= DATE '{t}' AND 
+                    date <= DATE '{t_end}'
+                GROUP BY zcta
+            """)
+
+        # Combine all queries into one
+        full_query = " UNION ALL ".join(queries)
+
+        # Execute and save
+        conn.execute(f"""
+            CREATE OR REPLACE TABLE output AS
+            {full_query}
+        """)
+
+        conn.execute(f"""
+            COPY (SELECT * FROM output ORDER BY zcta, horizon) 
+            TO '{output_fname}'
+        """)
+
+
     conn.close()
     
 if __name__ == "__main__":
