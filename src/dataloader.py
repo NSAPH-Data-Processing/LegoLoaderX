@@ -10,6 +10,14 @@ from tqdm import tqdm
 import duckdb
 import yaml
 
+# class HealthXDataset(IterableDataset):
+#     def __get_iter__():
+#         """
+#         Returns an iterator over the dataset.
+#         This method is not implemented yet.
+#         """
+#         raise NotImplementedError("This method is not implemented yet.")
+
 class VarsHealthxDataset(Dataset):
     def __init__(
         self,
