@@ -1,4 +1,4 @@
-year: 2015
+year: 2010
 horizons: [30, 90, 180] # Horizons in days
 #strata: [] # Strata will not be used
 
@@ -7,7 +7,7 @@ var_group: health
 vg_name: health
 
 #timestr: "20000101" # Timestr will not be used
-var: I10
+var: diabetes
 
 spatial_res: zcta
 temporal_res: daily
@@ -17,11 +17,11 @@ output_dir: data/
 
 #var_group
 min_year: 2000
-max_year: 2015
+max_year: 2014
 min_spatial_res: zcta
 min_temporal_res: daily
 lego_nm: sparse_counts
-lego_dir: lego/medicare/medpar_icd_codes/zcta_daily/
+lego_dir: lego/medicare/medpar_outcomes/ccw/zcta_daily #lego/medicare/medpar_icd_codes/zcta_daily/
 
 hydra:
   run:

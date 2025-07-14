@@ -24,7 +24,7 @@ def main(cfg):
     
     conn = duckdb.connect()
 
-    LOGGER.info(f"Processing data for icd code {cfg.var}")
+    LOGGER.info(f"Processing data for {cfg.var}")
     input_files = f"{cfg.input_dir}/{cfg.lego_dir}/{cfg.lego_nm}_*.parquet"
     output_folder = f"{cfg.output_dir}/{cfg.vg_name}/{cfg.var}/"
     os.makedirs(output_folder, exist_ok=True)
@@ -52,7 +52,7 @@ def main(cfg):
                 n
             FROM '{input_files}'
             WHERE
-                icd10 = '{cfg.var}' AND 
+                var = '{cfg.var}' AND 
                 date = DATE '{t}'
         """)
 
@@ -66,7 +66,7 @@ def main(cfg):
                     SUM(n) AS n
                 FROM '{input_files}'
                 WHERE 
-                    icd10 = '{cfg.var}' AND 
+                    var = '{cfg.var}' AND 
                     date >= DATE '{t}' AND 
                     date <= DATE '{t_end}'
                 GROUP BY zcta

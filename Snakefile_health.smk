@@ -1,30 +1,30 @@
-import calendar
+# import calendar
 
 # Load config
 configfile: "conf/health/snakemake.yaml"
 
 # Get config values
 years = config["years"]
-icd_codes = config["icd_codes"]
+vars = config["vars"]
 
 # Rule: final output is one sentinel file per ICD/year (Dec 31)
 rule all:
     input:
         expand(
-            "data/health/{icd}/{icd}__{year}1231.parquet",
-            icd=icd_codes,
+            "data/health/{var}/{var}__{year}1231.parquet",
+            var=vars,
             year=years
         )
 
-# Rule: preprocess all data for given ICD and year
+# Rule: preprocess all data for given var and year
 rule preprocess_health:
     output:
-        "data/health/{icd}/{icd}__{year}1231.parquet"
+        "data/health/{var}/{var}__{year}1231.parquet"
     shell:
         """
         python src/preprocessing_health.py \
             hydra.run.dir=. \
-            var={wildcards.icd} \
+            var={wildcards.var} \
             year={wildcards.year}
         """
 
