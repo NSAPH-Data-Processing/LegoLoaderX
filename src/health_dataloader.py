@@ -1,27 +1,126 @@
-def __getitem__(self, idx):
-    date = self.date_keys[idx]
-    files = self.date_to_files[date]
+from typing import Literal
+import pandas as pd
+import numpy as np
+import torch
+from torch.utils.data import DataLoader, Dataset
+import duckdb
 
-    tensor = torch.zeros((len(self.icd_codes), len(self.zcta_list), len(self.horizons)), dtype=torch.float32)
+class HealthDataset(Dataset):
+    def __init__(
+        self,
+        root_dir,
+        vars, # List of outcomes (e.g., ["anemia", "asthma"])
+        nodes, # List of zctas
+        window,
+        horizons: list[int] | None = None,
+        delta_t: int | None = None,
+        min_year = 2000,
+        max_year = 2020,
+    ):
+        assert horizons is not None or delta_t is not None, "Either horizons or delta_t must be provided."
+        assert horizons is None or delta_t is None, "Only one of horizons or delta_t can be provided."
+        self.root_dir = root_dir
 
-    for icd, file in files.items():
-        df = pd.read_parquet(file)
+        self.vars = vars
+        self.var_to_idx = {var: i for i, var in enumerate(self.vars)}
+        
+        self.nodes = nodes
+        self.node_string = ",".join(f"'{node}'" for node in self.nodes)  # For SQL queries
+        self.node_to_idx = {node: i for i, node in enumerate(self.nodes)}
 
-        # Filter valid zcta and horizon entries
-        df = df[df['zcta'].isin(self.zcta_to_idx) & df['horizon'].isin(self.horizon_to_idx)]
-        if df.empty:
-            continue
+        all_dates = pd.date_range(f"{min_year}-01-01", f"{max_year}-12-31", freq="D")
+        self.yyyymmdd = [f"{d.year}{d.month:02d}{d.day:02d}"  for d in all_dates]
 
-        icd_idx = self.icd_to_idx[icd]
-        zcta_idx = df['zcta'].map(self.zcta_to_idx).values
-        horizon_idx = df['horizon'].map(self.horizon_to_idx).values
-        counts = df['n'].values
+        if horizons:
+            self.horizon_mode = "horizons"
+            self.horizons = list(sorted(horizons))
+            if 0 not in self.horizons:
+                self.horizons.insert(0, 0)
+            self.horizon_string = ",".join(map(str, self.horizons))  # For SQL queries
+            self.horizon_to_idx = {h: i for i, h in enumerate(horizons)}
+            self.start_dates = self.yyyymmdd[window-1:]  # Dates for which we have window history
+        else:
+            self.horizon_mode = "delta_t"
+            self.delta_t = delta_t
+            self.start_dates = self.yyyymmdd[window-1:-delta_t]  # Dates for which we have window history
 
-        i = torch.full((len(df),), icd_idx, dtype=torch.long)
-        j = torch.tensor(zcta_idx, dtype=torch.long)
-        k = torch.tensor(horizon_idx, dtype=torch.long)
-        v = torch.tensor(counts, dtype=torch.float32)
+        self.window = window
 
-        tensor[i, j, k] = v  # ✅ idiomatic and readable
+    def __len__(self):
+        return len(self.start_dates)
+    
+    def __getitem_with_horizons(self, idx):
+        counts = torch.zeros((len(self.nodes), len(self.vars), len(self.horizons), self.window), dtype=torch.long)
 
-    return tensor
+        for var in self.var_to_idx:
+            # Like this start_date[idx] == self.yyyymmdd[idx + window - 1]
+            dates = self.yyyymmdd[idx:idx + self.window]
+
+            # Collect all files for the given variable and date range
+            var_index = self.var_to_idx[var]
+
+            for date_idx, day in enumerate(dates):
+                file = f"{self.root_dir}/health/{var}/{var}__{day}.parquet"
+                horizon_string = ",".join(map(str, self.horizons))
+                vals = duckdb.query(f"SELECT * FROM '{file}' where zcta IN ({self.node_string}) AND horizon IN ({horizon_string})").fetchall()
+       
+                # non-vectorized
+                for z, h, c in vals:
+                    z_idx = self.node_to_idx[z]
+                    h_idx = self.horizon_to_idx[h]
+                    # Update the counts tensor
+                    counts[z_idx, var_index, h_idx, date_idx] = int(c)
+
+        return counts
+    
+    def __getitem__with_delta_t(self, idx):
+        counts = torch.zeros((len(self.nodes), len(self.vars), self.window + self.delta_t), dtype=torch.long)
+
+        for var in self.var_to_idx:
+            # Like this start_date[idx] == self.yyyymmdd[idx + window - 1]
+            dates = self.yyyymmdd[idx:idx + self.window + self.delta_t]
+
+            # Collect all files for the given variable and date range
+            var_index = self.var_to_idx[var]
+
+            for date_idx, day in enumerate(dates):
+                file = f"{self.root_dir}/health/{var}/{var}__{day}.parquet"
+                vals = duckdb.query(f"SELECT zcta, n FROM '{file}' WHERE horizon==0 AND zcta IN ({self.node_string})").fetchall()
+
+                # non-vectorized
+                for z, c in vals:
+                    # Get the index for the node
+                    z_idx = self.node_to_idx[z]
+                    # Update the counts tensor
+                    counts[z_idx, var_index, date_idx] = int(c)
+
+        return counts
+
+    def __getitem__(self, idx):
+        if self.horizon_mode == "horizons":
+            counts = self.__getitem_with_horizons(idx)
+        else:
+            counts = self.__getitem__with_delta_t(idx)
+
+        return counts
+    
+def main():
+    root_dir = "data"
+    var_dict = ["anemia", "asthma"]
+    # print example  zcta list
+    nodes_list = ["00601", "00602"]  # Example zcta codes
+    window = 30
+    horizons = [0, 7, 14, 30]  # Example horizons
+    delta_t = 180
+    min_year = 2000
+    max_year = 2014
+
+    # dataset = VarsHealthxDataset(root_dir, var_dict, nodes_list, window, delta_t=delta_t, min_year=min_year, max_year=max_year)
+    dataset = HealthDataset(root_dir, var_dict, nodes_list, window, horizons=horizons, min_year=min_year, max_year=max_year)
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=16, prefetch_factor=4)
+
+    for batch in dataloader:
+        print(batch.shape)  # Should print the shape of the batch tensor
+
+if __name__ == "__main__":
+    main()
