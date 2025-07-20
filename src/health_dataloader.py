@@ -39,10 +39,14 @@ class HealthDataset(Dataset):
             self.horizon_string = ",".join(map(str, self.horizons))  # For SQL queries
             self.horizon_to_idx = {h: i for i, h in enumerate(horizons)}
             self.start_dates = self.yyyymmdd[window-1:]  # Dates for which we have window history
+            self.delta_t = None
         else:
             self.horizon_mode = "delta_t"
             self.delta_t = delta_t
             self.start_dates = self.yyyymmdd[window-1:-delta_t]  # Dates for which we have window history
+            self.horizons = None
+            self.horizon_string = None
+            self.horizon_to_idx = None
 
         self.window = window
 
@@ -84,7 +88,7 @@ class HealthDataset(Dataset):
             var_index = self.var_to_idx[var]
 
             for date_idx, day in enumerate(dates):
-                file = f"{self.root_dir}/health/{var}/{var}__{day}.parquet"
+                file = f"{self.root_dir}/{var}/{var}__{day}.parquet"
                 vals = duckdb.query(f"SELECT zcta, n FROM '{file}' WHERE horizon==0 AND zcta IN ({self.node_string})").fetchall()
 
                 # non-vectorized

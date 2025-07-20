@@ -13,7 +13,7 @@ spatial_res: zcta
 temporal_res: daily
 
 input_dir: data/input/
-output_dir: data/
+output_dir: data/health/
 
 #var_group
 min_year: 2000
