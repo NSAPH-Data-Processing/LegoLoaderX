@@ -8,7 +8,7 @@ from omegaconf import DictConfig
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 import duckdb
-import yaml
+
 
 
 class XDataset(Dataset):
@@ -131,8 +131,7 @@ def compute_summary(loader):
 
 @hydra.main(config_path="../conf/dataloader", config_name="config", version_base=None)
 def main(cfg: DictConfig):
-    """This script tests the dataloader and saves aggregate statistics in a summary file."""
-
+    import yaml
     var_dict = {}
 
     # iterate through variable groups and collect names of all variables
@@ -190,27 +189,6 @@ def main(cfg: DictConfig):
     # print(summary["means"])
     # print(summary["stds"])
     # print(f"Elapsed time: {summary['elapsed_time']:.2f} seconds")
-
-
-# @hydra.main(config_path="../conf/dataloader", config_name="config", version_base=None)
-# def main(cfg: DictConfig):
-#     """This script tests the dataloader and saves aggregate statistics in a summary file."""
-
-#     var_dict = {}
-
-#     # iterate through variable groups and collect names of all variables
-#     for vg in cfg.var_groups:
-#         var_dict[vg] = {}
-#         with open(f"conf/var_group/{vg}.yaml", "r") as f:
-#             vg_cfg = yaml.safe_load(f)
-#             # get variable names
-#             var_dict[vg]["vars"] = vg_cfg["vars"]
-#             # store spatial and temporal res
-#             var_dict[vg]["temporal_res"] = vg_cfg["min_temporal_res"]
-#             var_dict[vg]["spatial_res"] = vg_cfg["min_spatial_res"]
-#             f.close()
-
-#     root_dir = cfg.data_dir
 
 
 if __name__ == "__main__":
