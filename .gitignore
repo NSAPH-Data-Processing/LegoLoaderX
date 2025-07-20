@@ -3,3 +3,4 @@ logs/*
 .snakemake/*
 slurm*
 .hydra/*
+*/__pycache__/*
