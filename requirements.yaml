@@ -17,5 +17,3 @@ dependencies:
     - tqdm
     - xarray
     - torch
-    - torchvision
-    - torchaudio
