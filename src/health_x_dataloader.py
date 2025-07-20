@@ -1,0 +1,126 @@
+from torch.utils.data import DataLoader, Dataset
+from x_dataloader import XDataset
+from health_dataloader import HealthDataset
+import hydra
+from omegaconf import DictConfig
+
+
+class HealthXDataset(Dataset):
+    def __init__(
+            self, 
+            root_dir, 
+            var_dict, 
+            nodes=None, 
+            window=None, 
+            horizons=None, 
+            delta_t=None, 
+            min_year=2000, 
+            max_year=2020):
+
+        self.root_dir = root_dir
+        self.var_dict = var_dict
+        self.nodes = nodes
+        self.window = window
+        self.min_year = min_year
+        self.max_year = max_year
+
+        self.outcomes_dataset = HealthDataset(
+            root_dir="data/health", #TODO: replace 
+            vars=self.var_dict["outcomes"],
+            nodes=self.nodes,  # Use nodes_list directly
+            window=self.window,
+            horizons=horizons,
+            delta_t=delta_t,
+            min_year=self.min_year,
+            max_year=self.max_year
+        )
+        self.horizons = self.outcomes_dataset.horizons
+        self.delta_t = self.outcomes_dataset.delta_t
+       
+        self.confounders_dataset = XDataset(
+            root_dir="data/output", #TODO: replace
+            var_dict=self.var_dict["confounders"],
+            nodes=self.nodes,  # List of zctas or other nodes
+            window=self.window,
+            min_year=self.min_year,
+            max_year=self.max_year
+        )
+        self.treatments_dataset = XDataset(
+            root_dir="data/output", #TODO: replace 
+            var_dict=self.var_dict["treatments"],
+            nodes=self.nodes,  # List of zctas or other nodes
+            window=self.window,
+            min_year=self.min_year,
+            max_year=self.max_year
+        )
+
+        self.vars = self.confounders_dataset.vars + self.treatments_dataset.vars + self.outcomes_dataset.vars
+
+    def __len__(self):
+        return len(self.outcomes_dataset)
+    
+    def __getitem__(self, idx):
+        confounders = self.confounders_dataset[idx]
+        treatments = self.treatments_dataset[idx]
+        outcomes = self.outcomes_dataset[idx]
+
+        return {
+            "confounders": confounders,
+            "treatments": treatments,
+            "outcomes": outcomes
+        }
+
+@hydra.main(config_path="../conf/dataloader", config_name="config", version_base=None)
+def main(cfg: DictConfig):
+    
+    var_dict = {}
+
+    var_dict = {
+        "confounders": {
+            "census": {
+                "temporal_res": "yearly",
+                "vars": ["population", "median_household_income", "pop_poverty"],
+            },
+            "climate_types": {
+                "vars": ["Af", "Am", "Aw", "BSh"],
+                "temporal_res": "yearly"
+            }
+        },
+        "treatments": {
+            "gridmet": {
+                "vars": ["rmax", "rmin", "pr"],
+                "temporal_res": "daily"
+            }
+        },
+        "outcomes": ["anemia", "asthma", "diabetes"]
+    }
+
+    root_dir = cfg.data_dir
+
+    # initialize dataset
+    dataset = HealthXDataset(
+        root_dir=root_dir,
+        var_dict=var_dict,
+        nodes=cfg.nodes if hasattr(cfg, 'nodes') else ["02301", "02148"],  # Default nodes if not specified
+        window=cfg.window if hasattr(cfg, 'window') else 7,  # Default window if not specified
+        delta_t=cfg.delta_t if hasattr(cfg, 'delta_t') else 7,  # Default delta_t if not specified
+        min_year = cfg.min_year, 
+        max_year = cfg.max_year
+    )
+
+    # adapt to dataloader
+    dataloader = DataLoader(
+        dataset,
+        batch_size=1,
+        shuffle=True,
+        num_workers=1,
+        pin_memory=True,
+        persistent_workers=True,
+    )
+
+    for batch in dataloader:
+        print({k: v.shape for k, v in batch.items()})  # Print shapes of each item in the batch
+
+if __name__ == "__main__":
+    main()
+
