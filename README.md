@@ -17,9 +17,12 @@ Use cases:
 Key points:
 
 - Exposes a modular Dataset class
+- Composable loading of **confounders**, **treatments**, and **outcomes**
+- Time-windowed and forecast-oriented batch generation
 - Supports configuration-driven loading via YAML
 - Built on the Lego Data Model — a structured and vetted multi-domain data warehouse
-- No external dependencies beyond PyTorch and standard Python libraries
+- DuckDB + PyArrow query backend for fast I/O
+- Compatible with PyTorch `DataLoader` and batch processing
 
 ## Installation
 
@@ -36,15 +39,6 @@ git clone https://github.com/your-org/LegoLoaderX.git
 cd LegoLoaderX
 pip install -e .
 ```
-
-## Features
-
-- Composable loading of **confounders**, **treatments**, and **outcomes**
-- Time-windowed and forecast-oriented input generation
-- DuckDB + PyArrow query backend for fast I/O
-- Compatible with PyTorch `DataLoader` and batch processing
-
-
 
 ## Dataloader Architecture
 
