@@ -76,7 +76,7 @@ class XDataset(Dataset):
                     # non-vectorized
                     for z, c in duckdb.query(query).fetchall():
                         # Get the index for the node
-                        if z not in self.node_to_idx or not c:  # Skip if node not found or count is zero
+                        if z not in self.node_to_idx or c == 0 or c is None:  # Skip if node not found, count is zero, or count is None
                             continue
                         z_idx = self.node_to_idx[z]
                         # Update the counts tensor
