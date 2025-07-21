@@ -58,11 +58,26 @@ var_dict
 | Outcomes     | `(n_nodes, n_vars, len(horizons), window)` *(or)* `(n_nodes, n_vars, window + delta_t)` |
 
 ## The Lego Data Model
-LegoLoaderX is named for its interface to the Lego Data Model, a system of standardized and composable data views (or "blocks") for:
+The Lego Data Model is a system of standardized and composable data views (or "blocks") for:
 
 - Air pollution (e.g., PM2.5, NO₂)
 - Climate indicators (e.g., temperature, drought)
 - Demographics and census
 - Health outcomes and covars
 
-This structure enables consistent, reproducible data access across ML tasks.
+The Lego Data Model is designed to house datasets that are easy to piece together for epi and environmental studies. In this repository we process Lego Data Model materialized views into a feature store. The feature store allows accelerated loading into ML applications. 
+
+## Generating the Feature Store 
+
+Build the conda environment
+```
+conda env create -f environment.yaml
+```
+
+Modify the configuration files in config/
+
+Then run
+```
+snakemake --cores 4
+```
+
