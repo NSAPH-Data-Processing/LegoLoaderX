@@ -1,6 +1,6 @@
 from torch.utils.data import DataLoader, Dataset
-from x_dataloader import XDataset
-from health_dataloader import HealthDataset
+from legoloaderx.x_dataloader import XDataset
+from legoloaderx.health_dataloader import HealthDataset
 import hydra
 from omegaconf import DictConfig
 
