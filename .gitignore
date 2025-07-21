@@ -4,3 +4,5 @@ logs/*
 slurm*
 .hydra/*
 */__pycache__/*
+env/*
+*.egg-info
