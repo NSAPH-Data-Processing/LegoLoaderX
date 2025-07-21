@@ -25,7 +25,7 @@ class HealthXDataset(Dataset):
         self.max_year = max_year
 
         self.outcomes_dataset = HealthDataset(
-            root_dir="data/health", #TODO: replace 
+            root_dir=f"{self.root_dir}/health",
             vars=self.var_dict["outcomes"],
             nodes=self.nodes,  # Use nodes_list directly
             window=self.window,
@@ -38,7 +38,7 @@ class HealthXDataset(Dataset):
         self.delta_t = self.outcomes_dataset.delta_t
        
         self.confounders_dataset = XDataset(
-            root_dir="data/output", #TODO: replace
+            root_dir=f"{self.root_dir}/covars",
             var_dict=self.var_dict["confounders"],
             nodes=self.nodes,  # List of zctas or other nodes
             window=self.window,
@@ -46,7 +46,7 @@ class HealthXDataset(Dataset):
             max_year=self.max_year
         )
         self.treatments_dataset = XDataset(
-            root_dir="data/output", #TODO: replace 
+            root_dir=f"{self.root_dir}/covars",
             var_dict=self.var_dict["treatments"],
             nodes=self.nodes,  # List of zctas or other nodes
             window=self.window,
@@ -54,10 +54,16 @@ class HealthXDataset(Dataset):
             max_year=self.max_year
         )
 
-        self.vars = self.confounders_dataset.vars + self.treatments_dataset.vars + self.outcomes_dataset.vars
+        self.vars = {
+            "confounders": self.confounders_dataset.vars,
+            "treatments": self.treatments_dataset.vars,
+            "outcomes": self.outcomes_dataset.vars
+        }
+
+        self.start_dates = self.outcomes_dataset.start_dates
 
     def __len__(self):
-        return len(self.outcomes_dataset)
+        return len(self.outcomes_dataset.start_dates)
     
     def __getitem__(self, idx):
         confounders = self.confounders_dataset[idx]
