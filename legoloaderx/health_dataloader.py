@@ -65,11 +65,12 @@ class HealthDataset(Dataset):
 
             for date_idx, day in enumerate(dates):
                 file = f"{self.root_dir}/health/{var}/{var}__{day}.parquet"
-                horizon_string = ",".join(map(str, self.horizons))
-                vals = duckdb.query(f"SELECT * FROM '{file}' where zcta IN ({self.node_string}) AND horizon IN ({horizon_string})").fetchall()
-       
+                vals = duckdb.query(f"SELECT * FROM '{file}'").fetchall()
+
                 # non-vectorized
                 for z, h, c in vals:
+                    if z not in self.node_to_idx or h not in self.horizon_to_idx or not c:
+                        continue
                     z_idx = self.node_to_idx[z]
                     h_idx = self.horizon_to_idx[h]
                     # Update the counts tensor

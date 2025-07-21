@@ -84,8 +84,8 @@ confounders:
       - Dfb
       - Dfc
       - Dfd
-      - Et
-      - Ef
+      - ET
+      - EF
 
 outcomes:
     - anemia

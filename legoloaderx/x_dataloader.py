@@ -33,7 +33,6 @@ class XDataset(Dataset):
         
         # Handle nodes (zctas)
         self.nodes = nodes
-        self.node_string = ",".join(f"'{node}'" for node in self.nodes)  # For SQL queries
         self.node_to_idx = {node: i for i, node in enumerate(self.nodes)}
         
         all_dates = pd.date_range(f"{min_year}-01-01", f"{max_year}-12-31", freq="D")
@@ -51,7 +50,7 @@ class XDataset(Dataset):
         dates = self.yyyymmdd[idx:idx + self.window - 1]  # Get the last 'window' dates
         
         # Initialize tensor for this variable across the window
-        counts = torch.zeros((len(self.nodes), len(self.vars), self.window))
+        tensor = torch.full((len(self.nodes), len(self.vars), self.window), fill_value=torch.nan, dtype=torch.float32)
 
         for var_group_name, var_group in self.var_dict.items():
             temporal_res = var_group["temporal_res"]
@@ -72,20 +71,22 @@ class XDataset(Dataset):
                     filename = f"{self.root_dir}/{var_group_name}/{var}/{var}__{file_date_str}.parquet"
                     
                     # Query with node filtering
-                    vals = duckdb.query(f"SELECT * FROM '{filename}' WHERE zcta IN ({self.node_string})").fetchall()
-                    
+                    query = f"SELECT zcta, {var} FROM '{filename}'"
+
                     # non-vectorized
-                    for z, c in vals:
+                    for z, c in duckdb.query(query).fetchall():
                         # Get the index for the node
+                        if z not in self.node_to_idx or not c:  # Skip if node not found or count is zero
+                            continue
                         z_idx = self.node_to_idx[z]
                         # Update the counts tensor
-                        counts[z_idx, var_index, date_idx] = int(c)
+                        tensor[z_idx, var_index, date_idx] = c
 
         if self.transform:
-            counts = self.transform(counts)
+            tensor = self.transform(tensor)
 
-        return counts
-    
+        return tensor
+
 # compute the means and standard deviations without storing all the data
 def compute_summary(loader):
     var_dict = loader.dataset.var_dict
