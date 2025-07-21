@@ -1,0 +1,117 @@
+treatments:
+  aqdh:
+    spatial_res: zcta
+    temporal_res: daily
+    vars:
+      - pm25
+      - no2
+      - o3
+  gridmet:
+    spatial_res: zcta
+    temporal_res: daily
+    vars:
+      - sph
+      - vpd
+      - tmmn
+      - tmmx
+      - pr
+      - rmin
+      - rmax
+      - srad
+      - vs
+      - th
+  pm25_ushap:
+    spatial_res: zcta
+    temporal_res: daily
+    vars:
+      - PM25
+
+confounders:
+  census:
+    spatial_res: zcta
+    temporal_res: yearly
+    vars:
+      - housing_occupied
+      - housing_owner_occupied
+      - housing_renter_occupied
+      - housing_units
+      - median_age
+      - median_home_value
+      - median_household_income
+      - pop_35_49_years
+      - pop_50_64_years
+      - pop_asian
+      - pop_black
+      - pop_higher_education_attained
+      - pop_higher_education_enrolled
+      - pop_hispanic
+      - pop_native
+      - pop_non_us_citizen
+      - pop_over_65_years
+      - pop_poverty
+      - population
+      - pop_under_20_years
+      - pop_white
+  climate_types:
+    spatial_res: zcta
+    temporal_res: yearly
+    vars:
+      - Af
+      - Am
+      - Aw
+      - BWh
+      - BWk
+      - BSh
+      - BSk
+      - Csa
+      - Csb
+      - Csc
+      - Cwa
+      - Cwb
+      - Cwc
+      - Cfa
+      - Cfb
+      - Cfc
+      - Dsa
+      - Dsb
+      - Dsc
+      - Dsd
+      - Dwa
+      - Dwb
+      - Dwc
+      - Dwd
+      - Dfa
+      - Dfb
+      - Dfc
+      - Dfd
+      - Et
+      - Ef
+
+outcomes:
+    - anemia
+    - ami
+    - alzh
+    - alzhdmta
+    - atrialfb
+    - cataract
+    - chrnkidn
+    - copd
+    - chf
+    - diabetes
+    - stroke
+    - breastCancer
+    - colorectalCancer
+    - prostateCancer
+    - lungCancer
+    - endometrialCancer
+    - hyperp
+    - glaucoma
+    - hipfrac
+    - ischmcht
+    - depressn
+    - osteoprs
+    - ra_oa
+    - asthma
+    - hyperl
+    - hypert
+    - hypoth
