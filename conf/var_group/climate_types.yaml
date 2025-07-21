@@ -1,11 +1,18 @@
 var_group_name: climate_types
-vars: [
-    "pct_af", "pct_am", "pct_aw", "pct_bwh", "pct_bwk", "pct_bsh", "pct_bsk",
-    "pct_csa", "pct_csb", "pct_csc", "pct_cwa", "pct_cwb", "pct_cwc",
-    "pct_cfa", "pct_cfb", "pct_cfc", "pct_dsa", "pct_dsb", "pct_dsc",
-    "pct_dsd", "pct_dwa", "pct_dwb", "pct_dwc", "pct_dwd", "pct_dfa",
-    "pct_dfb", "pct_dfc", "pct_dfd", "pct_et", "pct_ef"
-  ]
+vars: ["Af", "Am", "Aw", "BWh", "BWk", "BSh", "BSk",
+       "Csa", "Csb", "Csc", "Cwa", "Cwb", "Cwc",
+       "Cfa", "Cfb", "Cfc", "Dsa", "Dsb", "Dsc",
+       "Dsd", "Dwa", "Dwb", "Dwc", "Dwd", "Dfa",
+       "Dfb", "Dfc", "Dfd", "Et", "Ef"]
+# The following vars are commented out as they are not currently used
+# Uncomment if needed in the future
+# vars: [
+#     "pct_af", "pct_am", "pct_aw", "pct_bwh", "pct_bwk", "pct_bsh", "pct_bsk",
+#     "pct_csa", "pct_csb", "pct_csc", "pct_cwa", "pct_cwb", "pct_cwc",
+#     "pct_cfa", "pct_cfb", "pct_cfc", "pct_dsa", "pct_dsb", "pct_dsc",
+#     "pct_dsd", "pct_dwa", "pct_dwb", "pct_dwc", "pct_dwd", "pct_dfa",
+#     "pct_dfb", "pct_dfc", "pct_dfd", "pct_et", "pct_ef"
+#   ]
 min_year: 2000
 max_year: 2020
 min_spatial_res: zcta

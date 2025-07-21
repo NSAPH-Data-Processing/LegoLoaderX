@@ -1,3 +1,4 @@
+var_group_name: gridmet
 vars: [sph, vpd, tmmn, tmmx, pr, rmin, rmax, srad, vs, th] 
 #vars: [sph, vpd] # can be used for testing
 min_year: 2000
