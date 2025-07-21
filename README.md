@@ -76,6 +76,8 @@ conda env create -f environment.yaml
 
 Modify the configuration files in config/
 
+Attach the pipeline folder structure using `python src/create_dir_paths`
+
 Then run
 ```
 snakemake --cores 4
