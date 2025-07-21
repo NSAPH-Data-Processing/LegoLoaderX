@@ -2,7 +2,7 @@
 
 **Modular, reproducible data loading for health and environmental research. Built on the Lego Data Model.**
 
-**LegoLoaderX** provides PyTorch-compatible Datasets designed for epidemiological and environmental data applications. It provides standardized access to a vetted internal data warehouse — the **Lego Data Model** — composed of materialized views across air quality, climate, census, and health data.
+**LegoLoaderX** provides PyTorch-compatible Datasets designed for epidemiological and environmental data applications which are built from a standardized access to a vetted internal data warehouse — the **Lego Data Model** — composed of materialized views across air quality, climate, census, and health data.
 
 This package enables deep learning pipelines to easily and reproducibly access complex structured data via a simple, familiar PyTorch interface.
 
