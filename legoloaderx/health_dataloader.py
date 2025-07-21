@@ -69,7 +69,7 @@ class HealthDataset(Dataset):
 
                 # non-vectorized
                 for z, h, c in vals:
-                    if z not in self.node_to_idx or h not in self.horizon_to_idx or not c:
+                    if z not in self.node_to_idx or h not in self.horizon_to_idx or c is None:
                         continue
                     z_idx = self.node_to_idx[z]
                     h_idx = self.horizon_to_idx[h]
