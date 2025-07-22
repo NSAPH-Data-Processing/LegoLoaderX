@@ -91,18 +91,18 @@ class HealthDataset(Dataset):
             for date_idx, day in enumerate(dates):
                 file = f"{self.root_dir}/{var}/{var}__{day}.parquet"
             
-                vals = pq.read_table(file).to_pandas()
-                vals = vals[vals["horizon"] == 0]
-                vals = vals[["zcta", "n"]]
+                table = pq.read_table(file).to_pandas()
+                table = table[table["horizon"] == 0]
 
-                vals["zcta_index"] = vals["zcta"].apply(lambda z: self.node_to_idx.get(z, -1))
-                vals = vals[vals["zcta_index"] != -1]  # Filter out nodes not in self.node_to_idx
+                if not table.empty:
+                    table["zcta_index"] = table["zcta"].apply(lambda z: self.node_to_idx.get(z, -1))
+                    table = table[table["zcta_index"] != -1]  # Filter out nodes not in self.node_to_idx
 
-                zcta_index = torch.LongTensor(vals["zcta_index"].values)
-                n = torch.LongTensor(vals["n"].values)
-            
-                counts[zcta_index, var_index, date_idx] = n
-    
+                    zcta_index = torch.LongTensor(table["zcta_index"].values)
+                    n = torch.LongTensor(table["n"].values)
+
+                    counts[zcta_index, var_index, date_idx] = n
+        
 
         return counts
 
