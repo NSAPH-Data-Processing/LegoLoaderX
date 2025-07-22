@@ -1,9 +1,8 @@
-from typing import Literal
 import pandas as pd
-import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 import duckdb
+import pyarrow.parquet as pq
 
 class HealthDataset(Dataset):
     def __init__(
@@ -65,16 +64,17 @@ class HealthDataset(Dataset):
 
             for date_idx, day in enumerate(dates):
                 file = f"{self.root_dir}/health/{var}/{var}__{day}.parquet"
-                vals = duckdb.query(f"SELECT * FROM '{file}'").fetchall()
+                table = pq.read_table(file).to_pandas()
 
-                # non-vectorized
-                for z, h, c in vals:
-                    if z not in self.node_to_idx or h not in self.horizon_to_idx or c is None:
-                        continue
-                    z_idx = self.node_to_idx[z]
-                    h_idx = self.horizon_to_idx[h]
-                    # Update the counts tensor
-                    counts[z_idx, var_index, h_idx, date_idx] = int(c)
+                table["zcta_index"] = table["zcta"].apply(lambda z: self.node_to_idx.get(z, -1))
+                table["horizon_index"] = table["horizon"].apply(lambda h: self.horizon_to_idx.get(h, -1))
+                table = table[(table["zcta_index"] != -1) & (table["horizon_index"] != -1)]  # Filter out nodes not in self.node_to_idx
+                zcta_index = torch.LongTensor(table["zcta_index"].values)
+                horizon_index = torch.LongTensor(table["horizon_index"].values)
+                n = torch.LongTensor(table["n"].values)
+
+                # Update the counts tensor
+                counts[zcta_index, var_index, horizon_index, date_idx] = n
 
         return counts
     
@@ -90,14 +90,19 @@ class HealthDataset(Dataset):
 
             for date_idx, day in enumerate(dates):
                 file = f"{self.root_dir}/{var}/{var}__{day}.parquet"
-                vals = duckdb.query(f"SELECT zcta, n FROM '{file}' WHERE horizon==0 AND zcta IN ({self.node_string})").fetchall()
+            
+                table = pq.read_table(file).to_pandas()
+                table = table[table["horizon"] == 0]
 
-                # non-vectorized
-                for z, c in vals:
-                    # Get the index for the node
-                    z_idx = self.node_to_idx[z]
-                    # Update the counts tensor
-                    counts[z_idx, var_index, date_idx] = int(c)
+                if not table.empty:
+                    table["zcta_index"] = table["zcta"].apply(lambda z: self.node_to_idx.get(z, -1))
+                    table = table[table["zcta_index"] != -1]  # Filter out nodes not in self.node_to_idx
+
+                    zcta_index = torch.LongTensor(table["zcta_index"].values)
+                    n = torch.LongTensor(table["n"].values)
+
+                    counts[zcta_index, var_index, date_idx] = n
+        
 
         return counts
 
