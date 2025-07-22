@@ -65,7 +65,6 @@ class HealthDataset(Dataset):
             for date_idx, day in enumerate(dates):
                 file = f"{self.root_dir}/health/{var}/{var}__{day}.parquet"
                 table = pq.read_table(file).to_pandas()
-                table = table[table["horizon"].isin(self.horizons)]
 
                 table["zcta_index"] = table["zcta"].apply(lambda z: self.node_to_idx.get(z, -1))
                 table["horizon_index"] = table["horizon"].apply(lambda h: self.horizon_to_idx.get(h, -1))
