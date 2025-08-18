@@ -1,3 +1,4 @@
+import torch
 from torch.utils.data import DataLoader, Dataset
 from legoloaderx.x_dataloader import XDataset
 from legoloaderx.health_dataloader import HealthDataset
@@ -54,7 +55,14 @@ class HealthXDataset(Dataset):
             max_year=self.max_year
         )
 
-        self.vars = self.confounders_dataset.vars + self.treatments_dataset.vars + self.outcomes_dataset.vars
+        self.vars = {
+            "confounders": self.confounders_dataset.vars,
+            "treatments": self.treatments_dataset.vars,
+            "outcomes": self.outcomes_dataset.vars
+        }
+
+        self.start_dates = self.outcomes_dataset.start_dates
+        self.yyyymmdd = self.outcomes_dataset.yyyymmdd
 
     def __len__(self):
         return len(self.outcomes_dataset)
@@ -67,7 +75,8 @@ class HealthXDataset(Dataset):
         return {
             "confounders": confounders,
             "treatments": treatments,
-            "outcomes": outcomes
+            "outcomes": outcomes,
+            "index": torch.tensor(idx, dtype=torch.long)
         }
 
 @hydra.main(config_path="../conf/dataloader", config_name="config", version_base=None)
