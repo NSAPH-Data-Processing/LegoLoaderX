@@ -1,13 +1,12 @@
 import time
 
 import hydra
-import numpy as np
 import torch
 import pandas as pd
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-import duckdb
+import pyarrow.parquet as pq
 
 
 
@@ -33,7 +32,6 @@ class XDataset(Dataset):
         
         # Handle nodes (zctas)
         self.nodes = nodes
-        self.node_string = ",".join(f"'{node}'" for node in self.nodes)  # For SQL queries
         self.node_to_idx = {node: i for i, node in enumerate(self.nodes)}
         
         all_dates = pd.date_range(f"{min_year}-01-01", f"{max_year}-12-31", freq="D")
@@ -42,16 +40,19 @@ class XDataset(Dataset):
         # For windowed data, we need to start from window-1 to have enough history
         self.end_dates = self.yyyymmdd[window-1:]
 
+        # For node assignment after reading parquet
+        self.row_to_zcta_assignments = {}
+
     def __len__(self):
         return len(self.end_dates)
 
     def __getitem__(self, idx):
         # Get the date range for the window
         # end_dates[idx] corresponds to yyyymmdd[idx + window - 1]
-        dates = self.yyyymmdd[idx:idx + self.window - 1]  # Get the last 'window' dates
+        dates = self.yyyymmdd[idx:idx + self.window]  # Get the last 'window' dates
         
         # Initialize tensor for this variable across the window
-        counts = torch.zeros((len(self.nodes), len(self.vars), self.window))
+        tensor = torch.full((len(self.nodes), len(self.vars), self.window), fill_value=torch.nan, dtype=torch.float32)
 
         for var_group_name, var_group in self.var_dict.items():
             temporal_res = var_group["temporal_res"]
@@ -71,21 +72,27 @@ class XDataset(Dataset):
                     
                     filename = f"{self.root_dir}/{var_group_name}/{var}/{var}__{file_date_str}.parquet"
                     
-                    # Query with node filtering
-                    vals = duckdb.query(f"SELECT * FROM '{filename}' WHERE zcta IN ({self.node_string})").fetchall()
-                    
-                    # non-vectorized
-                    for z, c in vals:
-                        # Get the index for the node
-                        z_idx = self.node_to_idx[z]
-                        # Update the counts tensor
-                        counts[z_idx, var_index, date_idx] = int(c)
+                    # # Read the parquet file
+                    if var_group_name not in self.row_to_zcta_assignments:
+                        table = pq.read_table(filename, columns=["zcta"]).to_pandas()
+                        table["zcta_index"] = table["zcta"].apply(lambda z: self.node_to_idx.get(z, -1))
+                        # Filter out rows where zcta is not in node_to_idx
+                        row_filter = (table["zcta_index"] != -1).values
+                        zcta_index = torch.tensor(table["zcta_index"][row_filter].values, dtype=torch.long)
+                        self.row_to_zcta_assignments[var_group_name] = (zcta_index, row_filter)
+                    else:
+                        zcta_index, row_filter = self.row_to_zcta_assignments[var_group_name]
+
+                    table = pq.read_table(filename, columns=[var]).to_pandas()
+                    if not table.empty:
+                        values = torch.tensor(table[var][row_filter].values, dtype=torch.float32)
+                        tensor[zcta_index, var_index, date_idx] = values
 
         if self.transform:
-            counts = self.transform(counts)
+            tensor = self.transform(tensor)
 
-        return counts
-    
+        return tensor
+
 # compute the means and standard deviations without storing all the data
 def compute_summary(loader):
     var_dict = loader.dataset.var_dict
