@@ -53,7 +53,7 @@ class HealthDataset(Dataset):
         return len(self.start_dates)
     
     def __getitem_with_horizons(self, idx):
-        counts = torch.zeros((len(self.nodes), len(self.vars), len(self.horizons), self.window), dtype=torch.long)
+        counts = torch.zeros((len(self.nodes), len(self.vars), len(self.horizons), self.window), dtype=torch.float32)
 
         for var in self.var_to_idx:
             # Like this start_date[idx] == self.yyyymmdd[idx + window - 1]
@@ -76,10 +76,36 @@ class HealthDataset(Dataset):
                 # Update the counts tensor
                 counts[zcta_index, var_index, horizon_index, date_idx] = n
 
-        return counts
+        # for each date load the denom
+        _denom_cache = {}
+        _idxs_cache = {}
+        zcta_as_set = set(self.nodes)
+        denom = torch.zeros((len(self.nodes), self.window), dtype=torch.long)
+        for date_idx, day in enumerate(dates):
+            year = day[:4]
+
+            if year not in _denom_cache:
+                df = pq.read_table(f"{self.root_dir}/health/denom/denom__{year}.parquet").to_pandas()
+                df["zcta_index"] = df["zcta"].map(lambda z: self.node_to_idx.get(z, -1))
+                df = df[df["zcta_index"] != -1]  # Filter out nodes not in self.node_to_idx
+                _denom_cache[year] = df
+
+            denom_df = _denom_cache[year]
+            counts = torch.FloatTensor(denom_df.counts.values)
+            idxs = torch.LongTensor(denom_df.zcta_index.values)
+            denom[idxs, date_idx] = counts
+
+            # make counts for which denom is zero NaN
+            denom_mask = denom[:, date_idx] == 0
+            counts[denom_mask, :, date_idx] = torch.nan
+
+        return {
+            "counts": counts,
+            "denom": denom,
+        }
     
     def __getitem__with_delta_t(self, idx):
-        counts = torch.zeros((len(self.nodes), len(self.vars), self.window + self.delta_t), dtype=torch.long)
+        counts = torch.full((len(self.nodes), len(self.vars), self.window + self.delta_t), torch.nan, dtype=torch.float32)
 
         for var in self.var_to_idx:
             # Like this start_date[idx] == self.yyyymmdd[idx + window - 1]
@@ -102,6 +128,8 @@ class HealthDataset(Dataset):
                     n = torch.LongTensor(table["n"].values)
 
                     counts[zcta_index, var_index, date_idx] = n
+
+        if self.horizons is not None:
         
 
         return counts
