@@ -61,22 +61,31 @@ class HealthXDataset(Dataset):
             "outcomes": self.outcomes_dataset.vars
         }
 
-        self.start_dates = self.outcomes_dataset.start_dates
+        self.lead_dates = self.outcomes_dataset.lead_dates
         self.yyyymmdd = self.outcomes_dataset.yyyymmdd
 
     def __len__(self):
-        return len(self.outcomes_dataset.start_dates)
+        return len(self.outcomes_dataset.lead_dates)
     
     def __getitem__(self, idx):
         confounders = self.confounders_dataset[idx]
         treatments = self.treatments_dataset[idx]
         outcomes = self.outcomes_dataset[idx]
 
+        # extract year, month, date for each date in the window
+        dates = self.yyyymmdd[idx:idx + self.window]
+        year = [int(date[:4]) for date in dates]
+        month = [int(date[4:6]) for date in dates]
+        day = [int(date[6:8]) for date in dates]
+
         return {
             "confounders": confounders,
             "treatments": treatments,
             "outcomes": outcomes,
-            "index": torch.tensor(idx, dtype=torch.long)
+            "index": torch.tensor(idx, dtype=torch.long),
+            "year": torch.tensor(year, dtype=torch.long),
+            "month": torch.tensor(month, dtype=torch.long),
+            "day": torch.tensor(day, dtype=torch.long)
         }
 
 @hydra.main(config_path="../conf/dataloader", config_name="config", version_base=None)

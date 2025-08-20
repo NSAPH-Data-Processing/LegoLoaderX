@@ -38,13 +38,13 @@ class XDataset(Dataset):
         self.yyyymmdd = [f"{d.year}{d.month:02d}{d.day:02d}"  for d in all_dates]
         
         # For windowed data, we need to start from window-1 to have enough history
-        self.end_dates = self.yyyymmdd[window-1:]
+        self.lead_dates = self.yyyymmdd[window-1:]
 
         # For node assignment after reading parquet
         self.row_to_zcta_assignments = {}
 
     def __len__(self):
-        return len(self.end_dates)
+        return len(self.lead_dates)
 
     def __getitem__(self, idx):
         # Get the date range for the window

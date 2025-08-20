@@ -2,6 +2,7 @@ import os
 import hydra
 import logging
 import duckdb
+import pyarrow.parquet as pq
 
 
 # Configure logging
@@ -18,20 +19,21 @@ def main(cfg):
     """
     
     year = str(cfg.year)
-    denom_path = f"{cfg.input_dir}/lego/medicare/mbsf_medpar_denom/denom_{year}.parquet"
+    denom_path = f"{cfg.input_dir}/lego/medicare/mbsf_medpar_denom/zcta_yearly/counts_{year}.parquet"
 
     LOGGER.info(f"Reading denominator data from {denom_path}")
     
     # make duckdb query counting rows grouping by zcta where age_dob in between 65 and 110
-    denom_df = duckdb.sql(
-        f"""
-        SELECT zcta, COUNT(*) as count
-        FROM read_parquet('{denom_path}')
-        WHERE age_dob BETWEEN 65 AND 110
-        GROUP BY zcta
-        """
-    ).fetchdf()
-
+    # denom_df = duckdb.sql(
+    #     f"""
+    #     SELECT zcta, COUNT(*) as count
+    #     FROM read_parquet('{denom_path}')
+    #     WHERE age_dob BETWEEN 65 AND 110
+    #     GROUP BY zcta
+    #     """
+    # ).fetchdf()
+    denom_df = pq.read_table(denom_path, columns=['zcta', 'n_bene']).to_pandas()
+    
     # save table
     tgt_file = f"{cfg.output_dir}/denom/denom__{year}.parquet"
     os.makedirs(f"{cfg.output_dir}/denom/", exist_ok=True)
