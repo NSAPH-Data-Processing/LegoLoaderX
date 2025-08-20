@@ -31,7 +31,7 @@ def main(cfg):
     #     WHERE age_dob BETWEEN 65 AND 110
     #     GROUP BY zcta
     #     """
-    # ).fetchdf()
+    # Alternative implementation using DuckDB SQL is available in version control if needed.
     denom_df = pq.read_table(denom_path, columns=['zcta', 'n_bene']).to_pandas()
     
     # save table
