@@ -1,3 +1,5 @@
+import logging
+import os
 import time
 
 import hydra
@@ -38,13 +40,13 @@ class XDataset(Dataset):
         self.yyyymmdd = [f"{d.year}{d.month:02d}{d.day:02d}"  for d in all_dates]
         
         # For windowed data, we need to start from window-1 to have enough history
-        self.end_dates = self.yyyymmdd[window-1:]
+        self.lead_dates = self.yyyymmdd[window-1:]
 
         # For node assignment after reading parquet
         self.row_to_zcta_assignments = {}
 
     def __len__(self):
-        return len(self.end_dates)
+        return len(self.lead_dates)
 
     def __getitem__(self, idx):
         # Get the date range for the window
@@ -71,9 +73,13 @@ class XDataset(Dataset):
                         file_date_str = date_str
                     
                     filename = f"{self.root_dir}/{var_group_name}/{var}/{var}__{file_date_str}.parquet"
-                    
+            
                     # # Read the parquet file
                     if var_group_name not in self.row_to_zcta_assignments:
+                        if not os.path.exists(filename):
+                            logging.warning(f"File {filename} does not exist. Filling with NaNs.")
+                            continue
+
                         table = pq.read_table(filename, columns=["zcta"]).to_pandas()
                         table["zcta_index"] = table["zcta"].apply(lambda z: self.node_to_idx.get(z, -1))
                         # Filter out rows where zcta is not in node_to_idx
@@ -183,9 +189,9 @@ def main(cfg: DictConfig):
         dataset,
         batch_size=1,
         shuffle=True,
-        num_workers=12,
-        pin_memory=True,
-        persistent_workers=True,
+        num_workers=0,
+        # pin_memory=True,
+        # persistent_workers=True,
     )
 
     for batch in dataloader:
