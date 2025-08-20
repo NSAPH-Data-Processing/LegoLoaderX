@@ -81,7 +81,8 @@ class HealthXDataset(Dataset):
         return {
             "confounders": confounders,
             "treatments": treatments,
-            "outcomes": outcomes,
+            "outcomes": outcomes["outcomes"],
+            "denom": outcomes["denom"],
             "index": torch.tensor(idx, dtype=torch.long),
             "year": torch.tensor(year, dtype=torch.long),
             "month": torch.tensor(month, dtype=torch.long),

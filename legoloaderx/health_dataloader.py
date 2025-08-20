@@ -142,7 +142,7 @@ class HealthDataset(Dataset):
         denom = self.__getdenom_and_mask_counts(idx, counts)
 
         return {
-            "counts": counts,
+            "outcomes": counts,
             "denom": denom,
         }
 
