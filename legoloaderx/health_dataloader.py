@@ -65,7 +65,7 @@ class HealthDataset(Dataset):
             var_index = self.var_to_idx[var]
 
             for date_idx, day in enumerate(dates):
-                file = f"{self.root_dir}/health/{var}/{var}__{day}.parquet"
+                file = f"{self.root_dir}/{var}/{var}__{day}.parquet"
                 table = pq.read_table(file).to_pandas()
 
                 table["zcta_index"] = table["zcta"].apply(lambda z: self.node_to_idx.get(z, -1))
@@ -116,7 +116,7 @@ class HealthDataset(Dataset):
             year = day[:4]
 
             if year not in _denom_cache:
-                df = pq.read_table(f"{self.root_dir}/health/denom/denom__{year}.parquet").to_pandas()
+                df = pq.read_table(f"{self.root_dir}/denom/denom__{year}.parquet").to_pandas()
                 df.loc[df.n_bene == self.min_bene, "n_bene"] = 0  # Mask out small counts
                 df["zcta_index"] = df["zcta"].map(lambda z: self.node_to_idx.get(z, -1))
                 df = df[df["zcta_index"] != -1]  # Filter out nodes not in self.node_to_idx
@@ -126,7 +126,7 @@ class HealthDataset(Dataset):
             denom_counts = torch.FloatTensor(denom_df.n_bene.values)
             idxs = torch.LongTensor(denom_df.zcta_index.values)
             denom[idxs, date_idx] = denom_counts
-            counts[denom_counts == 0, :, :, date_idx] = torch.nan  # Mask counts where denom is zero
+            counts[denom_counts == 0, ..., date_idx] = torch.nan  # Mask counts where denom is zero
 
 
         return denom
@@ -147,7 +147,7 @@ class HealthDataset(Dataset):
         }
 
 def main():
-    root_dir = "data"
+    root_dir = "data/health"
     var_dict = ["anemia", "asthma"]
     # print example  zcta list
     nodes_list = ["00601", "00602"]  # Example zcta codes
@@ -159,10 +159,10 @@ def main():
 
     dataset = HealthDataset(root_dir, var_dict, nodes_list, window, delta_t=delta_t, min_year=min_year, max_year=max_year)
     dataset = HealthDataset(root_dir, var_dict, nodes_list, window, horizons=horizons, min_year=min_year, max_year=max_year)
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=0, prefetch_factor=4)
+    dataloader = DataLoader(dataset, batch_size=2, shuffle=True, num_workers=0)
 
     for batch in dataloader:
-        print(batch['counts'].shape)  # Should print the shape of the batch tensor
+        print(batch['outcomes'].shape)  # Should print the shape of the batch tensor
 
 if __name__ == "__main__":
     main()

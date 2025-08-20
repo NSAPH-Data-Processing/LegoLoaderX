@@ -114,7 +114,7 @@ def main(cfg: DictConfig):
         "outcomes": ["anemia", "asthma", "diabetes"]
     }
 
-    root_dir = cfg.data_dir
+    root_dir = "data/"
 
     # initialize dataset
     dataset = HealthXDataset(
@@ -132,9 +132,9 @@ def main(cfg: DictConfig):
         dataset,
         batch_size=1,
         shuffle=True,
-        num_workers=1,
-        pin_memory=True,
-        persistent_workers=True,
+        num_workers=0,
+        # pin_memory=True,
+        # persistent_workers=True,
     )
 
     for batch in dataloader:

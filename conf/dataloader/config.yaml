@@ -1,6 +1,6 @@
 var_groups: [gridmet, pm25_ushap, aqdh, census, climate_types]
 min_year: 2000
-max_year: 2016
+max_year: 2010
 data_dir: data/output/
 summary_stats_dir: summary_statistics
 summary_stats_nm: summary_statistics
