@@ -117,7 +117,7 @@ class HealthDataset(Dataset):
 
             if year not in _denom_cache:
                 df = pq.read_table(f"{self.root_dir}/denom/denom__{year}.parquet").to_pandas()
-                df.loc[df.n_bene == self.min_bene, "n_bene"] = 0  # Mask out small counts
+                df.loc[df.n_bene < self.min_bene, "n_bene"] = 0  # Mask out small counts
                 df["zcta_index"] = df["zcta"].map(lambda z: self.node_to_idx.get(z, -1))
                 df = df[df["zcta_index"] != -1]  # Filter out nodes not in self.node_to_idx
                 _denom_cache[year] = df
