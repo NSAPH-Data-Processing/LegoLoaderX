@@ -1,3 +1,4 @@
+import torch
 from torch.utils.data import DataLoader, Dataset
 from legoloaderx.x_dataloader import XDataset
 from legoloaderx.health_dataloader import HealthDataset
@@ -60,20 +61,32 @@ class HealthXDataset(Dataset):
             "outcomes": self.outcomes_dataset.vars
         }
 
-        self.start_dates = self.outcomes_dataset.start_dates
+        self.lead_dates = self.outcomes_dataset.lead_dates
+        self.yyyymmdd = self.outcomes_dataset.yyyymmdd
 
     def __len__(self):
-        return len(self.outcomes_dataset.start_dates)
+        return len(self.outcomes_dataset.lead_dates)
     
     def __getitem__(self, idx):
         confounders = self.confounders_dataset[idx]
         treatments = self.treatments_dataset[idx]
         outcomes = self.outcomes_dataset[idx]
 
+        # extract year, month, date for each date in the window
+        dates = self.yyyymmdd[idx:idx + self.window]
+        year = [int(date[:4]) for date in dates]
+        month = [int(date[4:6]) for date in dates]
+        day = [int(date[6:8]) for date in dates]
+
         return {
             "confounders": confounders,
             "treatments": treatments,
-            "outcomes": outcomes
+            "outcomes": outcomes["outcomes"],
+            "denom": outcomes["denom"],
+            "index": torch.tensor(idx, dtype=torch.long),
+            "year": torch.tensor(year, dtype=torch.long),
+            "month": torch.tensor(month, dtype=torch.long),
+            "day": torch.tensor(day, dtype=torch.long)
         }
 
 @hydra.main(config_path="../conf/dataloader", config_name="config", version_base=None)
@@ -101,7 +114,7 @@ def main(cfg: DictConfig):
         "outcomes": ["anemia", "asthma", "diabetes"]
     }
 
-    root_dir = cfg.data_dir
+    root_dir = "data/"
 
     # initialize dataset
     dataset = HealthXDataset(
@@ -119,9 +132,9 @@ def main(cfg: DictConfig):
         dataset,
         batch_size=1,
         shuffle=True,
-        num_workers=1,
-        pin_memory=True,
-        persistent_workers=True,
+        num_workers=0,
+        # pin_memory=True,
+        # persistent_workers=True,
     )
 
     for batch in dataloader:

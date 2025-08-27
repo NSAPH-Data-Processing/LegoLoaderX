@@ -14,6 +14,10 @@ rule all:
             "data/health/{var}/{var}__{year}1231.parquet",
             var=vars,
             year=years
+        ),
+        expand(
+            "data/health/denom/denom__{year}.parquet",
+            year=years
         )
 
 # Rule: preprocess all data for given var and year
@@ -27,6 +31,15 @@ rule preprocess_health:
             var={wildcards.var} \
             year={wildcards.year}
         """
+
+rule preprocess_denom:
+    output:
+        "data/health/denom/denom__{year}.parquet"
+    params:
+        script="src/preprocessing_denom.py"
+    run:
+        shell(f"python {params.script} year={wildcards.year}")
+
 
 # # Helper to generate all date strings for a year
 # def generate_dates(year):
