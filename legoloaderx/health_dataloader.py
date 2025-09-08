@@ -108,10 +108,10 @@ class HealthDataset(Dataset):
         return counts
 
     def __getdenom_and_mask_counts(self, idx, counts):
-        dates = self.yyyymmdd[idx:idx + self.window]
+        dates = self.yyyymmdd[idx:idx + self.window + self.delta_t]
 
         _denom_cache = {}
-        denom = torch.zeros((len(self.nodes), self.window), dtype=torch.float32)
+        denom = torch.zeros((len(self.nodes), self.window + self.delta_t), dtype=torch.float32)
         for date_idx, day in enumerate(dates):
             year = day[:4]
 
