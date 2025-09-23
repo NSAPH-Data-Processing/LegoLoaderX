@@ -8,7 +8,7 @@ class HealthDataset(Dataset):
     def __init__(
         self,
         root_dir,
-        vars, # List of outcomes (e.g., ["anemia", "asthma"])
+        var_dict, # var_dict is structured as {var_group: {"vars": [...], "temporal_res": ...}}
         nodes, # List of zctas
         window,
         horizons: list[int] | None = None,
@@ -21,9 +21,15 @@ class HealthDataset(Dataset):
         assert horizons is None or delta_t is None, "Only one of horizons or delta_t can be provided."
         self.root_dir = root_dir
 
-        self.vars = vars
+        self.var_dict = var_dict
+        # Pull the vars for each var_group in var_dict
+        self.vars = [
+            f"{var_group_name}_{var}"
+            for var_group_name, var_group in var_dict.items()
+            for var in var_group["vars"]
+        ]
         self.var_to_idx = {var: i for i, var in enumerate(self.vars)}
-        
+
         self.nodes = nodes
         self.node_string = ",".join(f"'{node}'" for node in self.nodes)  # For SQL queries
         self.node_to_idx = {node: i for i, node in enumerate(self.nodes)}
@@ -53,57 +59,64 @@ class HealthDataset(Dataset):
 
     def __len__(self):
         return len(self.lead_dates)
-    
+
     def __getcounts_with_horizons(self, idx):
         counts = torch.zeros((len(self.nodes), len(self.vars), len(self.horizons), self.window), dtype=torch.float32)
 
-        for var in self.var_to_idx:
+        # for var in self.var_to_idx:
+        for var_group_name, var_group in self.var_dict.items():
             # Like this start_date[idx] == self.yyyymmdd[idx + window - 1]
             dates = self.yyyymmdd[idx:idx + self.window]
 
-            # Collect all files for the given variable and date range
-            var_index = self.var_to_idx[var]
+            for var in var_group["vars"]:
+                # Get the index for the variable
+                var_index = self.var_to_idx[f"{var_group_name}_{var}"]
 
-            for date_idx, day in enumerate(dates):
-                file = f"{self.root_dir}/{var}/{var}__{day}.parquet"
-                table = pq.read_table(file).to_pandas()
+                for date_idx, day in enumerate(dates):
+                    file = f"{self.root_dir}/{var_group_name}/{var}/{var}__{day}.parquet"
+                    
+                    if not os.path.exists(file):
+                        continue  # Skip if file doesn't exist
+                        
+                    table = pq.read_table(file).to_pandas()
 
-                table["zcta_index"] = table["zcta"].apply(lambda z: self.node_to_idx.get(z, -1))
-                table["horizon_index"] = table["horizon"].apply(lambda h: self.horizon_to_idx.get(h, -1))
-                table = table[(table["zcta_index"] != -1) & (table["horizon_index"] != -1)]  # Filter out nodes not in self.node_to_idx
-                zcta_index = torch.LongTensor(table["zcta_index"].values)
-                horizon_index = torch.LongTensor(table["horizon_index"].values)
-                n = torch.FloatTensor(table["n"].values)
+                    table["zcta_index"] = table["zcta"].apply(lambda z: self.node_to_idx.get(z, -1))
+                    table["horizon_index"] = table["horizon"].apply(lambda h: self.horizon_to_idx.get(h, -1))
+                    table = table[(table["zcta_index"] != -1) & (table["horizon_index"] != -1)]  # Filter out nodes not in self.node_to_idx
+                    zcta_index = torch.LongTensor(table["zcta_index"].values)
+                    horizon_index = torch.LongTensor(table["horizon_index"].values)
+                    n = torch.FloatTensor(table["n"].values)
 
-                # Update the counts tensor
-                counts[zcta_index, var_index, horizon_index, date_idx] = n
+                    # Update the counts tensor
+                    counts[zcta_index, var_index, horizon_index, date_idx] = n
 
         return counts
 
     def __getcounts_with_delta_t(self, idx):
         counts = torch.zeros((len(self.nodes), len(self.vars), self.window + self.delta_t), dtype=torch.float32)
 
-        for var in self.var_to_idx:
+        for var_group_name, var_group in self.var_dict.items():
             # Like this start_date[idx] == self.yyyymmdd[idx + window - 1]
             dates = self.yyyymmdd[idx:idx + self.window + self.delta_t]
 
-            # Collect all files for the given variable and date range
-            var_index = self.var_to_idx[var]
+            for var in var_group["vars"]:
+                # Get the index for the variable
+                var_index = self.var_to_idx[f"{var_group_name}_{var}"]
 
-            for date_idx, day in enumerate(dates):
-                file = f"{self.root_dir}/{var}/{var}__{day}.parquet"
-            
-                table = pq.read_table(file).to_pandas()
-                table = table[table["horizon"] == 0]
+                for date_idx, day in enumerate(dates):
+                    file = f"{self.root_dir}/{var_group_name}/{var}/{var}__{day}.parquet"
 
-                if not table.empty:
-                    table["zcta_index"] = table["zcta"].apply(lambda z: self.node_to_idx.get(z, -1))
-                    table = table[table["zcta_index"] != -1]  # Filter out nodes not in self.node_to_idx
+                    table = pq.read_table(file).to_pandas()
+                    table = table[table["horizon"] == 0]
 
-                    zcta_index = torch.LongTensor(table["zcta_index"].values)
-                    n = torch.FloatTensor(table["n"].values)
+                    if not table.empty:
+                        table["zcta_index"] = table["zcta"].apply(lambda z: self.node_to_idx.get(z, -1))
+                        table = table[table["zcta_index"] != -1]  # Filter out nodes not in self.node_to_idx
 
-                    counts[zcta_index, var_index, date_idx] = n
+                        zcta_index = torch.LongTensor(table["zcta_index"].values)
+                        n = torch.FloatTensor(table["n"].values)
+
+                        counts[zcta_index, var_index, date_idx] = n
 
         return counts
 
@@ -128,16 +141,13 @@ class HealthDataset(Dataset):
             denom[idxs, date_idx] = denom_counts
             counts[denom_counts == 0, ..., date_idx] = torch.nan  # Mask counts where denom is zero
 
-
         return denom
-
 
     def __getitem__(self, idx):
         if self.horizon_mode == "horizons":
             counts = self.__getcounts_with_horizons(idx)
         else:
             counts = self.__getcounts_with_delta_t(idx)
-
 
         denom = self.__getdenom_and_mask_counts(idx, counts)
 
@@ -148,7 +158,13 @@ class HealthDataset(Dataset):
 
 def main():
     root_dir = "data/health"
-    var_dict = ["anemia", "asthma"]
+    # Example var_dict structured like x_dataloader.py
+    var_dict = {
+        "ccw": {
+            "vars": ["anemia", "asthma"],
+            "temporal_res": "daily"
+        }
+    }
     # print example  zcta list
     nodes_list = ["00601", "00602"]  # Example zcta codes
     window = 30

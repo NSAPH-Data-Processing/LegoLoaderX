@@ -6,6 +6,16 @@ vars: ['anemia', 'ami', 'alzh', 'alzhdmta', 'atrialfb', 'cataract',
       'endometrialCancer', 'hyperp', 'glaucoma', 'hipfrac', 'ischmcht', 
       'depressn', 'osteoprs', 'ra_oa', 'asthma', 'hyperl', 'hypert', 
       'hypoth']
+horizons: [30, 90, 180] 
+
+# depending on the choice of synthetic, read from different dirs
+use_synthetic: false
+
+lego_dir: lego/medicare
+synthetic_lego_dir: lego/medicare_synthetic
+
+
+# Horizons in days
 # ccw codes trimmed to 3 characters
 # icd_codes: ['A18', 'A52', 'B52', 'C18', 'C19', 'C20', 'C34', 'C50', 
 #          'C54', 'C61', 'C64', 'C68', 'D01', 'D02', 'D05', 'D07', 'D30', 

@@ -3,4 +3,5 @@ name: null
 dirs:
   input:
     lego: /n/dominici_lab/lab/lego
-  output: /n/dominici_lab/lab/lego_loader_x/output
+  covars: /n/dominici_lab/lab/lego_loader_x/output
+  health: /n/dominici_lab/lab/lego_loader_x/health_synthetic

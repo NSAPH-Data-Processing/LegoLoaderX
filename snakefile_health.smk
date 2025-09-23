@@ -7,38 +7,57 @@ configfile: "conf/health/snakemake.yaml"
 years = config["years"]
 vars = config["vars"]
 
+# Get paths
+if config["synthetic"]:
+    lego_dir = config["synthetic_lego_dir"]
+else:
+    lego_dir = config["lego_dir"]
+
+
+print(f"Using dir:\n  - lego_dir: {lego_dir}\n")
+
 # Rule: final output is one sentinel file per ICD/year (Dec 31)
 rule all:
     input:
         expand(
-            "data/health/{var}/{var}__{year}1231.parquet",
+            f"data/health/ccw/{{var}}/{{var}}__{{year}}1231.parquet",
             var=vars,
             year=years
         ),
         expand(
-            "data/health/denom/denom__{year}.parquet",
+            f"data/health/denom/denom__{{year}}.parquet",
             year=years
         )
 
 # Rule: preprocess all data for given var and year
 rule preprocess_health:
     output:
-        "data/health/{var}/{var}__{year}1231.parquet"
+        f"data/health/ccw/{{var}}/{{var}}__{{year}}1231.parquet"
+    params:
+        horizons = str(config["horizons"]),
+        lego_dir = lego_dir,
     shell:
         """
         python src/preprocessing_health.py \
             hydra.run.dir=. \
             var={wildcards.var} \
-            year={wildcards.year}
+            year={wildcards.year} \
+            horizons={params.horizons} \
+            lego_dir={params.lego_dir} \
         """
 
 rule preprocess_denom:
     output:
-        "data/health/denom/denom__{year}.parquet"
+        f"data/health/denom/denom__{{year}}.parquet"
     params:
-        script="src/preprocessing_denom.py"
-    run:
-        shell(f"python {params.script} year={wildcards.year}")
+        lego_dir = lego_dir
+    shell:
+        """
+        python src/preprocessing_denom.py \
+            hydra.run.dir=. \
+            year={wildcards.year} \
+            lego_dir={params.lego_dir} \
+        """
 
 
 # # Helper to generate all date strings for a year
