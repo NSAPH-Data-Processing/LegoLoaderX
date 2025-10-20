@@ -1,6 +1,7 @@
-name: local
+name: null
 
 dirs:
-  input: 
+  input:
     lego: /n/dominici_lab/lab/lego
-  output: null
+  covars: null
+  health: null

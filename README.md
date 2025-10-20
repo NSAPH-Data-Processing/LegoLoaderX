@@ -83,3 +83,7 @@ Then run
 snakemake --cores 4
 ```
 
+## Overview of synthetic data generation pipeline
+
+Synthetic denom files are generated using official ZCTA population counts from the U.S. Census.
+

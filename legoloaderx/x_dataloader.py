@@ -89,10 +89,11 @@ class XDataset(Dataset):
                     else:
                         zcta_index, row_filter = self.row_to_zcta_assignments[var_group_name]
 
-                    table = pq.read_table(filename, columns=[var]).to_pandas()
-                    if not table.empty:
-                        values = torch.tensor(table[var][row_filter].values, dtype=torch.float32)
-                        tensor[zcta_index, var_index, date_idx] = values
+                    if os.path.exists(filename):
+                        table = pq.read_table(filename, columns=[var]).to_pandas()
+                        if not table.empty:
+                            values = torch.tensor(table[var][row_filter].values, dtype=torch.float32)
+                            tensor[zcta_index, var_index, date_idx] = values
 
         if self.transform:
             tensor = self.transform(tensor)

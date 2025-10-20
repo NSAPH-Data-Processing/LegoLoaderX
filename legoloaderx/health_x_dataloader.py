@@ -11,6 +11,7 @@ class HealthXDataset(Dataset):
             self, 
             root_dir, 
             var_dict, 
+            var_type=None,
             nodes=None, 
             window=None, 
             horizons=None, 
@@ -27,7 +28,7 @@ class HealthXDataset(Dataset):
 
         self.outcomes_dataset = HealthDataset(
             root_dir=f"{self.root_dir}/health",
-            vars=self.var_dict["outcomes"],
+            var_dict=self.var_dict["outcomes"],
             nodes=self.nodes,  # Use nodes_list directly
             window=self.window,
             horizons=horizons,
@@ -58,7 +59,7 @@ class HealthXDataset(Dataset):
         self.vars = {
             "confounders": self.confounders_dataset.vars,
             "treatments": self.treatments_dataset.vars,
-            "outcomes": self.outcomes_dataset.vars
+            "outcomes": self.outcomes_dataset.var_dict
         }
 
         self.lead_dates = self.outcomes_dataset.lead_dates
@@ -111,7 +112,12 @@ def main(cfg: DictConfig):
                 "temporal_res": "daily"
             }
         },
-        "outcomes": ["anemia", "asthma", "diabetes"]
+        "outcomes": {
+            "ccw": {
+                "vars": ["anemia", "asthma", "diabetes"],
+                "temporal_res": "daily",   # only daily is supported for outcomes for now
+            },
+        },
     }
 
     root_dir = "data/"
