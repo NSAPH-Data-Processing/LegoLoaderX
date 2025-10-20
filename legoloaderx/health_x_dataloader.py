@@ -11,6 +11,7 @@ class HealthXDataset(Dataset):
             self, 
             root_dir, 
             var_dict, 
+            var_type=None,
             nodes=None, 
             window=None, 
             horizons=None, 

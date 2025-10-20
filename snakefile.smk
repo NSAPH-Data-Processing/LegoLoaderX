@@ -1,3 +1,6 @@
+# snakemake file to process covariate data
+# see snakemake_health.smk for health data processing
+
 # Load Hydra configs using yaml
 import yaml
 import pandas as pd

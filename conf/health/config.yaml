@@ -1,9 +1,6 @@
 year: 2010
 horizons: [30, 90, 180] # Horizons in days | must be in data
 
-#strata: [] # Strata will not be used
-
-#timestr: "20000101" # Timestr will not be used
 var: diabetes
 
 spatial_res: zcta
@@ -12,9 +9,8 @@ temporal_res: daily
 input_dir: data/input
 output_dir: data/health
 
-#var_group
 min_year: 2000
-max_year: 2014
+max_year: 2001
 min_spatial_res: zcta
 min_temporal_res: daily
 
