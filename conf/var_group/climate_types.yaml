@@ -15,6 +15,7 @@ vars: ["Af", "Am", "Aw", "BWh", "BWk", "BSh", "BSk",
 #   ]
 min_year: 2000
 max_year: 2020
+valid_normalize: true
 min_spatial_res: zcta
 min_temporal_res: yearly
 lego_nm: climate_types__koppen_geiger__zcta_yearly
