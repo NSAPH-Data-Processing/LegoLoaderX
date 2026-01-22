@@ -9,7 +9,7 @@ import pandas as pd
 
 
 # compute the means and standard deviations without storing all the data
-def compute_summary(loader, output_dir=None):
+def compute_summary(loader, output_dir=None, output_nm=None):
     """
     Compute summary statistics (mean, std, nan count) for all variables.
     
@@ -48,6 +48,7 @@ def compute_summary(loader, output_dir=None):
     # also keep track of time
     start_time = time.time()
 
+    # count = 0
     # iterate through
     for batch in tqdm(loader):
         # Shape: (batch_size, n_nodes, n_vars, window)
@@ -58,6 +59,7 @@ def compute_summary(loader, output_dir=None):
         totals_sum += x.sum(dim=(0, 1, 3))
         totals_ss += (x**2).sum(dim=(0, 1, 3))
 
+        # count += 1
         # if count == 10:
         #     break  # for testing purposes, limit to 10 batches
 
@@ -72,10 +74,10 @@ def compute_summary(loader, output_dir=None):
     for var_group_name in var_dict.keys():
         summary_by_group[var_group_name] = {}
     
-    for var, mean, std, nan_count, total_count in zip(var_lst, means, stds, totals_nan, totals_n):
+    for var, mean, std, nan_count, valid_count in zip(var_lst, means, stds, totals_nan, totals_n):
         var_group = var_to_group[var]
         
-        frac_nan = float(nan_count) / (float(nan_count) + float(total_count)) if float(total_count) > 0 else 0
+        frac_nan = float(nan_count) / (float(nan_count) + float(valid_count)) 
         var_summary = {
             "mean": float(mean),
             "std": float(std),
@@ -88,11 +90,11 @@ def compute_summary(loader, output_dir=None):
         "elapsed_time_seconds": elapsed_time}
     
     # Save to JSON file(s) if output_dir is provided
-    if output_dir is not None:
+    if output_dir is not None and output_nm is not None:
         os.makedirs(output_dir, exist_ok=True)
 
         # Save single JSON with all variables
-        summary_file = os.path.join(output_dir, "summary_statistics.json")
+        summary_file = os.path.join(output_dir, f"{output_nm}.json")
         with open(summary_file, "w") as f:
             json.dump(summary_by_group, f, indent=2)
         print(f"Saved summary statistics to {summary_file}")

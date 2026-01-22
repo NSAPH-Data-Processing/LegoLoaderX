@@ -134,20 +134,8 @@ def main(cfg: DictConfig):
             var_dict[vg]["spatial_res"] = vg_cfg["min_spatial_res"]
             f.close()
 
-    # # Example var_dict
-    # var_dict = {
-    #     "census": {
-    #         "temporal_res": "yearly",
-    #         "vars": ["pop", "income", "poverty"],
-    #     },
-    #     "gridmet": {
-    #         "vars": ["rmax", "rmin", "pr"],
-    #         "temporal_res": "daily"
-    #     }
-    # }
-
     root_dir = cfg.data_dir
-    zcta_dir = "data/input/lego/geoboundaries/us_geoboundaries__census/us_uniqueid__census/zcta_yearly"
+    zcta_dir = f"{cfg.data_dir}/lego/geoboundaries/us_geoboundaries__census/us_uniqueid__census/zcta_yearly"
     unique_zctas, _ = get_unique_ids(zcta_dir, cfg.min_year, cfg.max_year)
 
     # initialize dataset
