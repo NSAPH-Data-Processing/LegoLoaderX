@@ -10,7 +10,7 @@ from omegaconf import DictConfig
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 import pyarrow.parquet as pq
-from utils import compute_summary, load_summary_stats, get_var_summy, get_unique_ids
+from legoloaderx.utils import compute_summary, load_summary_stats, get_var_summy, get_unique_ids
 
 
 

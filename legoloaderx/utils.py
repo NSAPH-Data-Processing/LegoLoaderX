@@ -124,6 +124,8 @@ def load_summary_stats(stats_source):
     # Normalize keys to allow both grouped and flat lookups
     norm_map = {}
     for var_group, vg_dict in stats.items():
+        if var_group == "_metadata":
+            continue
         if isinstance(vg_dict, dict):
             for var, val in vg_dict.items():
                 if "mean" in val and "std" in val:
