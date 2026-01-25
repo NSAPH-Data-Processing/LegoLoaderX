@@ -97,11 +97,11 @@ class XDataset(Dataset):
                     else:
                         zcta_index, row_filter = self.row_to_zcta_assignments[var_group_name]
 
-                    if not os.path.exists(filename):
+                    if os.path.exists(filename):
+                        table = pq.read_table(filename, columns=[var]).to_pandas()
+                    else:
                         logging.warning(f"File {filename} does not exist. Filling with NaNs.")
                         table = pd.DataFrame(columns=[var])
-                    else:
-                        table = pq.read_table(filename, columns=[var]).to_pandas()
                         
                     if not table.empty:
                         values = torch.tensor(table[var][row_filter].values, dtype=torch.float32)

@@ -16,10 +16,10 @@ logging.basicConfig(
 def main(cfg):
     """
     Preprocess denominator data for health datasets.
-    """
+    """ 
     
     year = str(cfg.year)
-    denom_path = f"{cfg.input_dir}/lego/medicare/mbsf_medpar_denom/zcta_yearly/counts_{year}.parquet"
+    denom_path = f"{cfg.input_dir}/{cfg.lego_dir}/mbsf_medpar_denom/{cfg.min_spatial_res}_yearly/counts_{year}.parquet"
 
     LOGGER.info(f"Reading denominator data from {denom_path}")
     

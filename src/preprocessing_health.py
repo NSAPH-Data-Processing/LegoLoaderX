@@ -21,12 +21,13 @@ def main(cfg):
     Current implementation is for the LEGO dataset.
     Only zcta daily data is supported (with hardcoded vars)
     """
-    
+
     conn = duckdb.connect()
 
     LOGGER.info(f"Processing data for {cfg.var}")
-    input_files = f"{cfg.input_dir}/{cfg.lego_dir}/{cfg.lego_nm}_*.parquet"
-    output_folder = f"{cfg.output_dir}/{cfg.vg_name}/{cfg.var}/"
+    resolution = f"{cfg.min_spatial_res}_{cfg.min_temporal_res}"
+    input_files = f"{cfg.input_dir}/{cfg.lego_dir}/medpar_outcomes/{cfg.vg_name}/{resolution}/{cfg.lego_prefix}_*.parquet"
+    output_folder = f"{cfg.output_dir}/{cfg.vg_name}/{cfg.var}"
     os.makedirs(output_folder, exist_ok=True)
 
     year = cfg.year

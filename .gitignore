@@ -6,4 +6,5 @@ slurm*
 */__pycache__/*
 env/*
 *.egg-info
+*.log
 .vscode/*
