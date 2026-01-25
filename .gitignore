@@ -7,3 +7,4 @@ slurm*
 env/*
 *.egg-info
 *.log
+.vscode/*

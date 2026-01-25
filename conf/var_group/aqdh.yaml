@@ -1,5 +1,6 @@
 var_group_name: aqdh
 vars: [pm25, no2, o3]
+valid_normalize: true # compute mean/std and store in normalization_stats.json
 min_year: 2000
 max_year: 2016
 min_spatial_res: zcta

@@ -3,7 +3,7 @@ vars: ["Af", "Am", "Aw", "BWh", "BWk", "BSh", "BSk",
        "Csa", "Csb", "Csc", "Cwa", "Cwb", "Cwc",
        "Cfa", "Cfb", "Cfc", "Dsa", "Dsb", "Dsc",
        "Dsd", "Dwa", "Dwb", "Dwc", "Dwd", "Dfa",
-       "Dfb", "Dfc", "Dfd", "Et", "Ef"]
+       "Dfb", "Dfc", "Dfd", "ET", "EF"]
 # The following vars are commented out as they are not currently used
 # Uncomment if needed in the future
 # vars: [
@@ -15,6 +15,7 @@ vars: ["Af", "Am", "Aw", "BWh", "BWk", "BSh", "BSk",
 #   ]
 min_year: 2000
 max_year: 2020
+valid_normalize: true
 min_spatial_res: zcta
 min_temporal_res: yearly
 lego_nm: climate_types__koppen_geiger__zcta_yearly
