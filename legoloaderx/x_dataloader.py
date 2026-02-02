@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+import json
 
 import hydra
 import torch
@@ -9,6 +10,7 @@ from omegaconf import DictConfig
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 import pyarrow.parquet as pq
+from legoloaderx.utils import compute_summary, load_summary_stats, get_var_summy, get_unique_ids
 
 
 
@@ -21,12 +23,18 @@ class XDataset(Dataset):
         window,   # Window size for temporal data (required)
         transform=None, # not implemented right now
         min_year = 2000,
-        max_year = 2020
+        max_year = 2020,
+        normalize=False,  # Optional path or dict of summary stats
     ):
         self.root_dir = root_dir
         self.transform = transform
         self.var_dict = var_dict
         self.window = window
+    
+        if not normalize:
+            self.summary_stats = None
+        else:
+            self.summary_stats = load_summary_stats(os.path.join(self.root_dir, "summary_statistics/summary_statistics.json"))
 
         # Pull the vars for each var_group in var_dict
         self.vars = [f"{var_group_name}_{var}" for var_group_name, var_group in var_dict.items() for var in var_group["vars"]]
@@ -91,56 +99,22 @@ class XDataset(Dataset):
 
                     if os.path.exists(filename):
                         table = pq.read_table(filename, columns=[var]).to_pandas()
-                        if not table.empty:
-                            values = torch.tensor(table[var][row_filter].values, dtype=torch.float32)
-                            tensor[zcta_index, var_index, date_idx] = values
+                    else:
+                        logging.warning(f"File {filename} does not exist. Filling with NaNs.")
+                        table = pd.DataFrame(columns=[var])
+                        
+                    if not table.empty:
+                        values = torch.tensor(table[var][row_filter].values, dtype=torch.float32)
+                        # apply normalization if stats available
+                        mean, std = get_var_summy(self.summary_stats, var_group_name, var)
+                        mask = ~torch.isnan(values)
+                        values[mask] = (values[mask] - mean) / std
+                        tensor[zcta_index, var_index, date_idx] = values
 
         if self.transform:
             tensor = self.transform(tensor)
 
         return tensor
-
-# compute the means and standard deviations without storing all the data
-def compute_summary(loader):
-    var_dict = loader.dataset.var_dict
-    var_lst = [var for source in var_dict.values() for var in source['vars']]
-    
-    totals_nan = torch.zeros(len(var_lst))
-    totals_sum = torch.zeros(len(var_lst))
-    totals_ss = torch.zeros(len(var_lst))
-    totals_n = torch.zeros(len(var_lst))
-
-    # also keep track of time
-    start_time = time.time()
-
-    # iterate through
-    for batch in tqdm(loader):
-        # Shape: (batch_size, n_nodes, n_vars, window)
-        # Sum over batch, nodes, and window dimensions
-        totals_nan += torch.isnan(batch).sum(dim=(0, 1, 3))
-        totals_n += (~torch.isnan(batch)).sum(dim=(0, 1, 3))
-        x = torch.nan_to_num(batch, nan=0.0)
-        totals_sum += x.sum(dim=(0, 1, 3))
-        totals_ss += (x**2).sum(dim=(0, 1, 3))
-
-    elapsed_time = time.time() - start_time
-
-    # compute means and stds
-    means = totals_sum / totals_n
-    stds = torch.sqrt(totals_ss / totals_n - means**2)
-
-    # conver to dict with components as keys
-    nans_dict = {component: float(nan) for component, nan in zip(var_lst, totals_nan)}
-    means_dict = {component: float(mean) for component, mean in zip(var_lst, means)}
-    stds_dict = {component: float(std) for component, std in zip(var_lst, stds)}
-
-    # save to file
-    summary = {
-        "nans": nans_dict,
-        "means": means_dict, 
-        "stds": stds_dict, 
-        "elapsed_time": elapsed_time}
-    return(summary)
 
 
 @hydra.main(config_path="../conf/dataloader", config_name="config", version_base=None)
@@ -160,26 +134,17 @@ def main(cfg: DictConfig):
             var_dict[vg]["spatial_res"] = vg_cfg["min_spatial_res"]
             f.close()
 
-    # # Example var_dict
-    # var_dict = {
-    #     "census": {
-    #         "temporal_res": "yearly",
-    #         "vars": ["pop", "income", "poverty"],
-    #     },
-    #     "gridmet": {
-    #         "vars": ["rmax", "rmin", "pr"],
-    #         "temporal_res": "daily"
-    #     }
-    # }
-
     root_dir = cfg.data_dir
+    zcta_dir = f"{cfg.data_dir}/lego/geoboundaries/us_geoboundaries__census/us_uniqueid__census/zcta_yearly"
+    unique_zctas, _ = get_unique_ids(zcta_dir, cfg.min_year, cfg.max_year)
 
     # initialize dataset
     dataset = XDataset(
         root_dir=root_dir,
         transform=None,
         var_dict=var_dict,
-        nodes=cfg.nodes if hasattr(cfg, 'nodes') else ["02301", "02148"],  # Default nodes if not specified
+        nodes=unique_zctas,
+        normalize = cfg.normalize if hasattr(cfg, 'normalize') else False,
         window=cfg.window if hasattr(cfg, 'window') else 7,  # Default window if not specified
         min_year = cfg.min_year, 
         max_year = cfg.max_year
@@ -195,14 +160,7 @@ def main(cfg: DictConfig):
         # persistent_workers=True,
     )
 
-    for batch in dataloader:
-        print(batch.shape)
-
-    # summary = compute_summary(loader)
-    # print(summary["nans"])
-    # print(summary["means"])
-    # print(summary["stds"])
-    # print(f"Elapsed time: {summary['elapsed_time']:.2f} seconds")
+    compute_summary(dataloader, output_dir=f"{cfg.data_dir}/{cfg.summary_stats_dir}")
 
 
 if __name__ == "__main__":

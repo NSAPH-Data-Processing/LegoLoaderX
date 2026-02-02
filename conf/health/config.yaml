@@ -10,7 +10,8 @@ input_dir: data/input
 output_dir: data/health
 
 min_year: 2000
-max_year: 2001
+max_year: 2014
+valid_normalize: false
 min_spatial_res: zcta
 min_temporal_res: daily
 

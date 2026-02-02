@@ -3,6 +3,8 @@ from torch.utils.data import DataLoader, Dataset
 from legoloaderx.x_dataloader import XDataset
 from legoloaderx.health_dataloader import HealthDataset
 import hydra
+import json
+import os
 from omegaconf import DictConfig
 
 
@@ -16,15 +18,29 @@ class HealthXDataset(Dataset):
             window=None, 
             horizons=None, 
             delta_t=None, 
+            normalize=False,
             min_year=2000, 
             max_year=2020):
 
         self.root_dir = root_dir
         self.var_dict = var_dict
+        self.normalize = normalize
         self.nodes = nodes
         self.window = window
         self.min_year = min_year
         self.max_year = max_year
+
+        # load normalization json if normalize is True
+        # if self.normalize:
+        #     norm_path = f"{self.root_dir}/normalization/normalization_stats.json"
+        #     # if the file does not exist, raise error
+        #     if not os.path.exists(norm_path):
+        #         raise FileNotFoundError(f"Normalization stats file not found at {norm_path}")
+        #     else:
+        #         with open(norm_path, 'r') as f:
+        #             self.normalization_stats = json.load(f)
+        # else:
+        #     self.normalization_stats = None
 
         self.outcomes_dataset = HealthDataset(
             root_dir=f"{self.root_dir}/health",
@@ -44,6 +60,7 @@ class HealthXDataset(Dataset):
             var_dict=self.var_dict["confounders"],
             nodes=self.nodes,  # List of zctas or other nodes
             window=self.window,
+            normalize=self.normalize,
             min_year=self.min_year,
             max_year=self.max_year
         )
@@ -52,6 +69,7 @@ class HealthXDataset(Dataset):
             var_dict=self.var_dict["treatments"],
             nodes=self.nodes,  # List of zctas or other nodes
             window=self.window,
+            normalize=self.normalize,
             min_year=self.min_year,
             max_year=self.max_year
         )
@@ -130,7 +148,8 @@ def main(cfg: DictConfig):
         window=cfg.window if hasattr(cfg, 'window') else 7,  # Default window if not specified
         delta_t=cfg.delta_t if hasattr(cfg, 'delta_t') else 7,  # Default delta_t if not specified
         min_year = cfg.min_year, 
-        max_year = cfg.max_year
+        max_year = cfg.max_year,
+        normalize=cfg.normalize if hasattr(cfg, 'normalize') else False
     )
 
     # adapt to dataloader
