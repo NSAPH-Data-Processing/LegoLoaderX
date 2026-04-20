@@ -1,0 +1,17 @@
+var_group_dir: conf/var_group
+output_dir: data/embeddings
+
+# Which var_groups feed which stream. Order within a list is preserved in the
+# final vocab; groups are also processed in list order.
+streams:
+  treatments: [aqdh, gridmet, pm25_ushap]
+  confounders: [census, climate_types]
+  outcomes: [ccw]
+
+models:
+  - model: "BAAI/bge-small-en-v1.5"
+    library: "sentence_transformers"
+  - model: "FremyCompany/BioLORD-STAMB2-v1"
+    library: "sentence_transformers"
+  - model: "emilyalsentzer/Bio_ClinicalBERT"
+    library: "transformers"

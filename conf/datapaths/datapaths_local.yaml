@@ -5,3 +5,4 @@ dirs:
     lego: /n/dominici_lab/lab/lego
   covars: null
   health: null
+  embeddings: null

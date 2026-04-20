@@ -1,5 +1,27 @@
 var_group_name: census
 vars: [population, median_age, pop_under_20_years, pop_35_49_years, pop_50_64_years, pop_over_65_years, pop_white, pop_black, pop_native, pop_asian, pop_hispanic, pop_non_us_citizen, pop_higher_education_enrolled, pop_higher_education_attained, pop_poverty, housing_units, housing_occupied, housing_renter_occupied, housing_owner_occupied, median_home_value, median_household_income]
+descriptions:
+  population: "Total number of people living in the area."
+  median_age: "Midpoint age of the resident population, in years."
+  pop_under_20_years: "Children, adolescents, and young adults under the age of twenty."
+  pop_35_49_years: "Number of adults in early-to-mid working age, from thirty-five through forty-nine."
+  pop_50_64_years: "Number of adults in late working age, from fifty through sixty-four."
+  pop_over_65_years: "Older adults, age sixty-five and above."
+  pop_white: "Residents who identify their race as White."
+  pop_black: "Residents who identify as Black or African American."
+  pop_native: "Residents who identify as American Indian or Alaska Native."
+  pop_asian: "Residents who identify their race as Asian."
+  pop_hispanic: "Residents of Hispanic or Latino origin, regardless of race."
+  pop_non_us_citizen: "Residents who do not hold United States citizenship."
+  pop_higher_education_enrolled: "People currently enrolled as students in an undergraduate, graduate, or professional program."
+  pop_higher_education_attained: "Adults twenty-five and older who hold a bachelor's degree or a higher academic credential."
+  pop_poverty: "Residents whose household income falls below the federal poverty threshold."
+  housing_units: "Total housing stock, counting vacant and occupied dwellings together."
+  housing_occupied: "Number of dwellings that have at least one person living in them as a usual residence."
+  housing_renter_occupied: "Occupied dwellings in which the household rents from a landlord."
+  housing_owner_occupied: "Occupied dwellings in which a member of the household holds ownership of the home."
+  median_home_value: "Typical dollar value of an owner-occupied home, reported as the median."
+  median_household_income: "Typical household's annual income in US dollars, reported as the median."
 valid_normalize: true
 min_year: 2000
 max_year: 2020

@@ -9,3 +9,9 @@ tqdm
 ipykernel
 geopandas
 scipy
+transformers
+sentence-transformers
+safetensors
+scikit-learn
+matplotlib
+pytest
