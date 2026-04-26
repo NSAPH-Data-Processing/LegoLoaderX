@@ -107,7 +107,10 @@ class HealthDataset(Dataset):
                     file = f"{self.root_dir}/{var_group_name}/{var}/{var}__{day}.parquet"
 
                     table = pq.read_table(file).to_pandas()
-                    table = table[table["horizon"] == 0]
+                    uniq_horizons = table["horizon"].unique()
+                    if len(uniq_horizons) > 1:
+                        print(f"Warning: Multiple horizons found in {file}. Using only horizon 0.")
+                    #table = table[table["horizon"] == 0]
 
                     if not table.empty:
                         table["zcta_index"] = table["zcta"].apply(lambda z: self.node_to_idx.get(z, -1))

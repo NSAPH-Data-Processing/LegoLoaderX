@@ -5,6 +5,7 @@ from legoloaderx.health_dataloader import HealthDataset
 import hydra
 import json
 import os
+import time
 from omegaconf import DictConfig
 
 
@@ -87,9 +88,15 @@ class HealthXDataset(Dataset):
         return len(self.outcomes_dataset.lead_dates)
     
     def __getitem__(self, idx):
+        start_time = time.time()
         confounders = self.confounders_dataset[idx]
+        print("confounder processing time ", time.time() - start_time)
+        start_time = time.time()
         treatments = self.treatments_dataset[idx]
+        print("treatment processing time ", time.time() - start_time)
+        start_time = time.time()
         outcomes = self.outcomes_dataset[idx]
+        print("outcome processing time ", time.time() - start_time)
 
         # extract year, month, date for each date in the window
         dates = self.yyyymmdd[idx:idx + self.window]
