@@ -1,5 +1,7 @@
 var_group_name: pm25_ushap
 vars: [PM25]
+descriptions:
+  PM25: "Fine particulate matter concentration in micrograms per cubic meter, derived from a high-resolution reanalysis."
 min_year: 2000
 max_year: 2020
 valid_normalize: true

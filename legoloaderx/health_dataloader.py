@@ -139,7 +139,7 @@ class HealthDataset(Dataset):
             denom_counts = torch.FloatTensor(denom_df.n_bene.values)
             idxs = torch.LongTensor(denom_df.zcta_index.values)
             denom[idxs, date_idx] = denom_counts
-            counts[denom_counts == 0, ..., date_idx] = torch.nan  # Mask counts where denom is zero
+            counts[idxs[denom_counts == 0], ..., date_idx] = torch.nan  # Mask counts where denom is zero
 
         return denom
 

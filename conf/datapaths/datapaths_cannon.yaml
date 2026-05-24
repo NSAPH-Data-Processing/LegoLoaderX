@@ -5,3 +5,4 @@ dirs:
     lego: /n/dominici_lab/lab/lego
   covars: /n/dominici_lab/lab/lego_loader_x/output
   health: /n/dominici_lab/lab/lego_loader_x/health_synthetic
+  embeddings: /n/dominici_lab/lab/lego_loader_x/embeddings

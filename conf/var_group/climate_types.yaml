@@ -4,6 +4,37 @@ vars: ["Af", "Am", "Aw", "BWh", "BWk", "BSh", "BSk",
        "Cfa", "Cfb", "Cfc", "Dsa", "Dsb", "Dsc",
        "Dsd", "Dwa", "Dwb", "Dwc", "Dwd", "Dfa",
        "Dfb", "Dfc", "Dfd", "ET", "EF"]
+descriptions:
+  Af: "Tropical rainforest: consistently hot and wet throughout the year, with no real dry season."
+  Am: "Tropical monsoon climate: warm year-round with a pronounced wet season and a brief drier interval."
+  Aw: "Tropical savanna with a dry winter; hot temperatures and marked wet-dry seasonality."
+  BWh: "True hot desert, with very sparse rainfall and high year-round temperatures."
+  BWk: "Cold desert, extremely arid but with cool to cold winters."
+  BSh: "Semi-arid steppe in warm latitudes; grassland climate drier than temperate but wetter than desert."
+  BSk: "Cold steppe: semi-arid grassland with cool winters and limited rainfall."
+  Csa: "Mediterranean climate with hot, dry summers and mild, wet winters."
+  Csb: "Mediterranean climate featuring warm rather than hot summers, with wet winters."
+  Csc: "Rare Mediterranean variant with cool summers; found in a few highland coastal locations."
+  Cwa: "Subtropical climate with hot humid summers fed by monsoon rains and dry winters."
+  Cwb: "Subtropical highland climate with warm summers, dry winters, and monsoon-driven rainfall."
+  Cwc: "Cool subtropical highland climate with monsoonal wet summers and dry winters."
+  Cfa: "Humid subtropical climate with hot humid summers and mild winters, with no dry season."
+  Cfb: "Mild oceanic climate with cool summers, cool winters, and year-round moisture."
+  Cfc: "Cool subpolar oceanic climate with short mild summers and evenly distributed precipitation."
+  Dsa: "Continental climate with hot summers, cold winters, and a drier summer than winter."
+  Dsb: "Continental climate with warm summers, cold winters, and a dry-summer pattern."
+  Dsc: "Subarctic interior climate with cool summers, very cold winters, and drier summers."
+  Dsd: "Extremely cold subarctic climate with dry summers; winters reach severe lows."
+  Dwa: "Hot-summer continental climate driven by monsoons, with cold, dry winters."
+  Dwb: "Warm-summer continental climate with monsoonal summer rains and cold, dry winters."
+  Dwc: "Subarctic climate with monsoonal summer rains and bitterly cold, dry winters."
+  Dwd: "Severe subarctic climate with monsoon summers and extraordinarily cold, dry winters."
+  Dfa: "Continental climate with hot humid summers and cold winters, precipitation year-round."
+  Dfb: "Continental climate with warm humid summers and cold snowy winters, precipitation year-round."
+  Dfc: "Subarctic climate with short cool summers and long, very cold winters."
+  Dfd: "Extremely cold subarctic climate with brief cool summers and punishing winter temperatures."
+  ET: "Tundra: treeless polar or alpine climate where the warmest month averages just above freezing."
+  EF: "Ice cap climate: permanent snow and ice, with no month averaging above freezing."
 # The following vars are commented out as they are not currently used
 # Uncomment if needed in the future
 # vars: [

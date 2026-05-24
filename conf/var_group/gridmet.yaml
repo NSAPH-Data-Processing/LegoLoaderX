@@ -1,6 +1,17 @@
 var_group_name: gridmet
-vars: [sph, vpd, tmmn, tmmx, pr, rmin, rmax, srad, vs, th] 
+vars: [sph, vpd, tmmn, tmmx, pr, rmin, rmax, srad, vs, th]
 #vars: [sph, vpd] # can be used for testing
+descriptions:
+  sph: "Mass of water vapor carried per unit mass of moist air."
+  vpd: "Atmospheric drying power, given as the gap between saturation and actual vapor pressure in kilopascals."
+  tmmn: "Coldest near-surface air temperature reached over the day, in degrees Celsius."
+  tmmx: "Warmest near-surface air temperature reached over the day, in degrees Celsius."
+  pr: "Accumulated precipitation in millimeters of water depth over twenty-four hours."
+  rmin: "Lowest relative humidity reached during the day, expressed as a percentage of saturation."
+  rmax: "Highest relative humidity reached during the day, expressed as a percentage of saturation."
+  srad: "Incoming shortwave solar energy arriving at the ground, averaged over the day in watts per square meter."
+  vs: "Average near-surface wind speed at roughly ten meters above the ground, in meters per second."
+  th: "Prevailing wind direction at ten meters, reported as a bearing in degrees clockwise from due north."
 min_year: 2000
 max_year: 2020
 valid_normalize: true

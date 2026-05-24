@@ -1,0 +1,39 @@
+var_group_name: ccw
+vars: [anemia, ami, alzh, alzhdmta, atrialfb, cataract, chrnkidn, copd, chf,
+       diabetes, stroke, breastCancer, colorectalCancer, prostateCancer,
+       lungCancer, endometrialCancer, hyperp, glaucoma, hipfrac, ischmcht,
+       depressn, osteoprs, ra_oa, asthma, hyperl, hypert, hypoth]
+descriptions:
+  anemia: "Anemia; reduced red blood cell mass or hemoglobin leading to impaired oxygen delivery."
+  ami: "Acute myocardial infarction, commonly known as a heart attack; sudden blockage of coronary blood flow causing heart-muscle injury."
+  alzh: "Alzheimer's disease; progressive neurodegenerative disorder characterized by memory loss and cognitive decline."
+  alzhdmta: "Alzheimer's disease together with related dementias and senile dementia; progressive loss of cognition and memory from various neurodegenerative causes."
+  atrialfb: "Atrial fibrillation; irregular, often rapid heart rhythm originating in the upper chambers of the heart."
+  cataract: "Cataract; clouding of the eye's lens that blurs vision and worsens gradually with age."
+  chrnkidn: "Chronic kidney disease; sustained loss of kidney filtration function over months to years."
+  copd: "Chronic obstructive pulmonary disease and bronchiectasis; long-term airflow limitation and chronic airway damage in the lungs."
+  chf: "Congestive heart failure; the heart can no longer pump strongly enough to meet the body's needs, leading to fluid congestion."
+  diabetes: "Diabetes mellitus; chronically elevated blood glucose due to insulin deficiency or resistance."
+  stroke: "Stroke or transient ischemic attack; sudden neurologic deficit from disrupted cerebral blood flow."
+  breastCancer: "Breast cancer; malignant tumor arising in the breast tissue."
+  colorectalCancer: "Colorectal cancer; malignancy of the colon or rectum."
+  prostateCancer: "Prostate cancer; malignant tumor of the prostate gland in men."
+  lungCancer: "Lung cancer; malignancy of the bronchi or lung parenchyma."
+  endometrialCancer: "Endometrial cancer; malignant tumor of the uterine lining."
+  hyperp: "Benign prostatic hyperplasia; non-cancerous enlargement of the prostate that can obstruct urinary flow."
+  glaucoma: "Glaucoma; optic nerve damage, often linked to elevated intraocular pressure, that can lead to vision loss."
+  hipfrac: "Hip or pelvic fracture; broken bone in the hip or pelvis, typically from a fall in older adults."
+  ischmcht: "Ischemic heart disease; narrowing of the coronary arteries that restricts blood supply to the heart muscle."
+  depressn: "Depression; persistent low mood and loss of interest, including major depressive and related mood disorders."
+  osteoprs: "Osteoporosis; weakening of bone density and microarchitecture that raises fracture risk."
+  ra_oa: "Rheumatoid arthritis or osteoarthritis; chronic joint disease from autoimmune inflammation or from wear-and-tear cartilage loss."
+  asthma: "Asthma; chronic airway inflammation causing reversible bronchoconstriction, wheezing, and shortness of breath."
+  hyperl: "Hyperlipidemia; abnormally high cholesterol or triglyceride levels in the blood."
+  hypert: "Hypertension; chronically elevated arterial blood pressure."
+  hypoth: "Acquired hypothyroidism; under-active thyroid gland producing insufficient thyroid hormone."
+min_year: 2000
+max_year: 2020
+min_spatial_res: zcta
+min_temporal_res: yearly
+lego_nm: ccw__medicare__zcta_yearly
+lego_dir: lego/medicare/

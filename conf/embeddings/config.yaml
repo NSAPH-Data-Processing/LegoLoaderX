@@ -1,0 +1,30 @@
+defaults:
+  - _self_
+
+# Model used to embed variable descriptions.
+# Either a HuggingFace transformers BERT-style model or a sentence-transformers model.
+model: "BAAI/bge-small-en-v1.5"
+library: "sentence_transformers"  # "sentence_transformers" | "transformers"
+
+# Where var_group/<name>.yaml files live. Each yaml contributes its `vars:` +
+# `descriptions:` to the shared vocab.
+var_group_dir: conf/var_group
+
+# Which var_groups feed which stream.
+streams:
+  treatments: [aqdh, gridmet, pm25_ushap]
+  confounders: [census, climate_types]
+  outcomes: [ccw]
+
+# Output root. Embeddings land at:
+#   {output_dir}/{model}/{config.json, model.safetensors}
+# For shared-path deploy, override output_dir on the CLI to e.g.
+#   /n/dominici_lab/lab/lego_loader_x/embeddings
+output_dir: data/embeddings
+
+# L2-normalize the pooled embedding before writing.
+normalize: true
+
+hydra:
+  run:
+    dir: logs/embeddings/${now:%Y-%m-%d}/${now:%H-%M-%S}
