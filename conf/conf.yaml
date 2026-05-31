@@ -18,6 +18,9 @@ output_dir: data/output/
 uniqid_nm: us_uniqueid__census
 uniqid_dir: lego/geoboundaries/us_geoboundaries__census/
 
+format: daily_parquet  # daily_parquet | yearly_mmap_dense
+target: var_year       # var_year | canonical_zctas
+
 hydra:
   run:
     dir: logs/preprocessing/${now:%Y-%m-%d}/${now:%H-%M-%S}

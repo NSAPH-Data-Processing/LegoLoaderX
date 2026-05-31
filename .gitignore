@@ -3,8 +3,10 @@ logs/*
 .snakemake/*
 slurm*
 .hydra/*
-*/__pycache__/*
+**/__pycache__/
 env/*
 *.egg-info
 *.log
 .vscode/*
+build_logs/
+scratch/

@@ -10,6 +10,9 @@ import math
 configfile: "conf/snakemake.yaml"
 min_year = config["min_year"]
 max_year = config["max_year"]
+fmt = config["format"]
+assert fmt in ("daily_parquet", "yearly_mmap_dense"), f"unsupported format {fmt!r} for covariates"
+ext = "parquet" if fmt == "daily_parquet" else "npy"
 
 output_file_lst = []
 var_map = {}
@@ -34,42 +37,74 @@ for vg in config["var_groups"]:
 
         date_range = pd.date_range(f"{min_year_curr}-01-01", f"{max_year_curr}-12-31", freq="D")
 
-        if var_map[vg]["temporal_res"] == "daily":
+        if fmt == "yearly_mmap_dense":
+            # one per-(var, year) cell regardless of temporal_res
+            var_map[vg]["date_range"] = list(range(min_year_curr, max_year_curr + 1))
+            output_file_lst += expand(
+                f"data/output/{{var_group}}/{{var}}/{fmt}/{{var}}__{{year}}.{ext}",
+                var_group=vg,
+                var=[v for v in vg_cfg["vars"]],
+                year=var_map[vg]["date_range"],
+            )
+        elif var_map[vg]["temporal_res"] == "daily":
             var_map[vg]["date_range"] = [(d.year, d.month, d.day) for d in date_range]
-            if config["max_days"]: 
+            if config["max_days"]:
                 var_map[vg]["date_range"] = var_map[vg]["date_range"][:int(config["max_days"])]
             # iterate through valid y/m/d combos, expand vars within each
             for y,m,d in var_map[vg]["date_range"]:
-                output_file_lst += expand("data/output/{var_group}/{var}/{var}__{year}{month:02d}{day:02d}.parquet",
-                                            var_group=vg,
-                                            var=[v for v in vg_cfg["vars"]],
-                                            year=y,
-                                            month=m,
-                                            day=d)
+                output_file_lst += expand(
+                    f"data/output/{{var_group}}/{{var}}/{fmt}/{{var}}__{{year}}{{month:02d}}{{day:02d}}.{ext}",
+                    var_group=vg,
+                    var=[v for v in vg_cfg["vars"]],
+                    year=y,
+                    month=m,
+                    day=d,
+                )
         elif var_map[vg]["temporal_res"] == "monthly":
             var_map[vg]["date_range"] = [(y, m) for y in range(min_year_curr, max_year_curr + 1) for m in range(1, 13)]
-            output_file_lst += expand("data/output/{var_group}/{var}/{var}__{year}{month:02d}.parquet",
-                            var_group=vg,
-                            var=[v for v in vg_cfg["vars"]],
-                            year=[y for y, m in var_map[vg]["date_range"]],
-                            month=[m for y, m in var_map[vg]["date_range"]])
-        else:
-            var_map[vg]["date_range"] = [y for y in range(min_year_curr, max_year_curr + 1)]
-            output_file_lst += expand("data/output/{var_group}/{var}/{var}__{year}.parquet",
+            output_file_lst += expand(
+                f"data/output/{{var_group}}/{{var}}/{fmt}/{{var}}__{{year}}{{month:02d}}.{ext}",
                 var_group=vg,
                 var=[v for v in vg_cfg["vars"]],
-                year=[y for y in var_map[vg]["date_range"]])
+                year=[y for y, m in var_map[vg]["date_range"]],
+                month=[m for y, m in var_map[vg]["date_range"]],
+            )
+        else:
+            var_map[vg]["date_range"] = [y for y in range(min_year_curr, max_year_curr + 1)]
+            output_file_lst += expand(
+                f"data/output/{{var_group}}/{{var}}/{fmt}/{{var}}__{{year}}.{ext}",
+                var_group=vg,
+                var=[v for v in vg_cfg["vars"]],
+                year=[y for y in var_map[vg]["date_range"]],
+            )
         f.close()
+
+# yearly_mmap_dense needs idx2zcta.txt at the output root.
+idx2zcta_dep = []
+if fmt == "yearly_mmap_dense":
+    output_file_lst.append("data/output/idx2zcta.txt")
+    # Build idx2zcta.txt ONCE before the parallel per-(var,year) jobs read it,
+    # else the workers race to create it and some read a half-written file.
+    idx2zcta_dep = ["data/output/idx2zcta.txt"]
 
 # Expand over all valid combinations of variable groups, variables, and dates
 rule all:
     input:
         output_file_lst
 
+rule idx2zcta:
+    output:
+        "data/output/idx2zcta.txt"
+    shell:
+        "python src/preprocessing.py target=idx2zcta "
+        f"format={fmt} hydra.run.dir=."
+
 # have excluded input entry for now
 rule preprocess:
+    input:
+        idx2zcta_dep
     output:
-        "data/output/{var_group}/{var}/{var}__{timestring}.parquet"
+        f"data/output/{{var_group}}/{{var}}/{fmt}/{{var}}__{{timestring}}.{ext}"
     params:
         script="src/preprocessing.py"
     run:
@@ -80,4 +115,5 @@ rule preprocess:
               f"var={wildcards.var} "
               f"spatial_res={spatial_res} "
               f"temporal_res={temporal_res} "
-              f"timestr={timestring}")
+              f"timestr={timestring} "
+              f"format={fmt}")
