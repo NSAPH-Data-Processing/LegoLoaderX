@@ -10,19 +10,20 @@ from omegaconf import DictConfig
 
 class HealthXDataset(Dataset):
     def __init__(
-            self, 
-            root_dir, 
-            var_dict, 
+            self,
+            root_dir,
+            var_dict,
             var_type=None,
-            nodes=None, 
-            window=None, 
-            horizons=None, 
-            delta_t=None, 
+            nodes=None,
+            window=None,
+            delta_t=None,
+            file_format="daily_parquet",
             normalize=False,
-            min_year=2000, 
+            min_year=2000,
             max_year=2020):
 
         self.root_dir = root_dir
+        self.file_format = file_format
         self.var_dict = var_dict
         self.normalize = normalize
         self.nodes = nodes
@@ -30,36 +31,26 @@ class HealthXDataset(Dataset):
         self.min_year = min_year
         self.max_year = max_year
 
-        # load normalization json if normalize is True
-        # if self.normalize:
-        #     norm_path = f"{self.root_dir}/normalization/normalization_stats.json"
-        #     # if the file does not exist, raise error
-        #     if not os.path.exists(norm_path):
-        #         raise FileNotFoundError(f"Normalization stats file not found at {norm_path}")
-        #     else:
-        #         with open(norm_path, 'r') as f:
-        #             self.normalization_stats = json.load(f)
-        # else:
-        #     self.normalization_stats = None
-
         self.outcomes_dataset = HealthDataset(
             root_dir=f"{self.root_dir}/health",
             var_dict=self.var_dict["outcomes"],
-            nodes=self.nodes,  # Use nodes_list directly
+            nodes=self.nodes,
             window=self.window,
-            horizons=horizons,
             delta_t=delta_t,
+            file_format=file_format,
             min_year=self.min_year,
             max_year=self.max_year
         )
-        self.horizons = self.outcomes_dataset.horizons
         self.delta_t = self.outcomes_dataset.delta_t
-       
+
+        # Covariate roles are always dense (sparse only applies to outcomes).
+        x_file_format = "yearly_mmap_dense" if file_format == "yearly_mmap_sparse" else file_format
         self.confounders_dataset = XDataset(
             root_dir=f"{self.root_dir}/covars",
             var_dict=self.var_dict["confounders"],
-            nodes=self.nodes,  # List of zctas or other nodes
+            nodes=self.nodes,
             window=self.window,
+            file_format=x_file_format,
             normalize=self.normalize,
             min_year=self.min_year,
             max_year=self.max_year
@@ -67,8 +58,9 @@ class HealthXDataset(Dataset):
         self.treatments_dataset = XDataset(
             root_dir=f"{self.root_dir}/covars",
             var_dict=self.var_dict["treatments"],
-            nodes=self.nodes,  # List of zctas or other nodes
+            nodes=self.nodes,
             window=self.window,
+            file_format=x_file_format,
             normalize=self.normalize,
             min_year=self.min_year,
             max_year=self.max_year

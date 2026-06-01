@@ -51,3 +51,6 @@ min_spatial_res: zcta
 min_temporal_res: yearly
 lego_nm: climate_types__koppen_geiger__zcta_yearly
 lego_dir: lego/environmental/climate_types__koppen_geiger/present/zcta_yearly/
+# The koppen view stores per-zone area fractions as pct_<zone-lowercase>
+# (e.g. pct_af), while the canonical var / embedding key is the zone code (Af).
+lego_col: "pct_{var_lower}"

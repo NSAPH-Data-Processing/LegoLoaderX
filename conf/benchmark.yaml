@@ -1,0 +1,37 @@
+# Config for benchmarking/benchmark.py (the main benchmarking script).
+# `var_dict` is a shared config group (conf/var_dict/) so the same file feeds
+# both the package loaders and downstream consumers (e.g. climhealth main.py).
+
+defaults:
+  - var_dict: lego          # lego | lego_small
+  - _self_
+
+data_root: data
+window: 30
+delta_t: 180
+
+# Year range only bounds the index pool we sample from — the loader is lazy, so
+# each read touches exactly `window + delta_t` days regardless of the span.
+# Timing is governed by sample/batch counts below, not by the year range.
+# Use the outcomes (ccw) built span 2000-2014; covars span wider.
+min_year: 2000
+max_year: 2014
+seed: 42
+
+mode: all                   # formats | scaling | all
+
+# --- format comparison: time `n_samples` random __getitem__ reads per format ---
+# The per-sample spread is the latency distribution; no outer repetition needed.
+n_samples: 10               # short test; raise for the long confidence run
+
+# --- scaling sweep (yearly_mmap_dense): vary DataLoader params, measure sps ---
+# For each (num_workers, batch_size, prefetch) cell, draw `n_batches` batches.
+# Short test below; the confidence run uses batch_sizes [32, 64] and n_batches 10-19.
+n_batches: 5
+num_workers: [0, 2, 4, 8]
+batch_sizes: [1, 4]
+prefetch: [1, 2, 4]
+
+hydra:
+  run:
+    dir: logs/benchmark/${now:%Y-%m-%d}/${now:%H-%M-%S}

@@ -17,5 +17,5 @@ max_year: 2020
 valid_normalize: true
 min_spatial_res: zcta
 min_temporal_res: daily
-lego_nm: meteorology__gridmet__zcta_daily
-lego_dir: lego/environmental/meteorology__gridmet/zcta_daily/
+lego_nm: meteorology__gridmet__core__zcta_daily
+lego_dir: lego/environmental/meteorology__gridmet/core/zcta_daily/

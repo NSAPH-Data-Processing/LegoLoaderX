@@ -153,12 +153,21 @@ def get_var_summy(summary_stats, var_group_name, var_name):
 
 
 # Function to get unique IDs from zcta parquet files over a year range
+def load_idx2zcta(root_dir):
+    """Read idx2zcta.txt at ``root_dir`` (the per-role read root).
+    Written once by the format pipeline; ordering is authoritative for the
+    yearly_mmap_* per-(var, year) arrays."""
+    path = os.path.join(root_dir, "idx2zcta.txt")
+    with open(path) as f:
+        return [line.strip() for line in f if line.strip()]
+
+
 def get_unique_ids(unique_fpath, min_yr, max_yr):
     total_uniq = []
     node_lst_dict = {} 
     
     query = duckdb.query(f"SELECT zcta, year, continental_us FROM '{unique_fpath}/*.parquet'")
-    all_df = query.fetchdf().set_index('year')
+    all_df = query.df().set_index('year')
     all_df = all_df[all_df.continental_us]  # Filter for continental US
     for yr in range(min_yr, max_yr+1):
         

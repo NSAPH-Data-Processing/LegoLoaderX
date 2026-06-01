@@ -1,0 +1,165 @@
+treatments:
+  aqdh:
+    spatial_res: zcta
+    temporal_res: daily
+    vars:
+      - pm25
+      - no2
+      - o3
+  gridmet:
+    spatial_res: zcta
+    temporal_res: daily
+    vars:
+      - sph
+      - vpd
+      - tmmn
+      - tmmx
+      - pr
+      - rmin
+      - rmax
+      - srad
+      - vs
+      - th
+  pm25_ushap:
+    spatial_res: zcta
+    temporal_res: daily
+    vars:
+      - PM25
+
+confounders:
+  census:
+    spatial_res: zcta
+    temporal_res: yearly
+    vars:
+      - housing_occupied
+      - housing_owner_occupied
+      - housing_renter_occupied
+      - housing_units
+      - median_age
+      - median_home_value
+      - median_household_income
+      - pop_35_49_years
+      - pop_50_64_years
+      - pop_asian
+      - pop_black
+      - pop_higher_education_attained
+      - pop_higher_education_enrolled
+      - pop_hispanic
+      - pop_native
+      - pop_non_us_citizen
+      - pop_over_65_years
+      - pop_poverty
+      - population
+      - pop_under_20_years
+      - pop_white
+  climate_types:
+    spatial_res: zcta
+    temporal_res: yearly
+    vars:
+      - Af
+      - Am
+      - Aw
+      - BWh
+      - BWk
+      - BSh
+      - BSk
+      - Csa
+      - Csb
+      - Csc
+      - Cwa
+      - Cwb
+      - Cwc
+      - Cfa
+      - Cfb
+      - Cfc
+      - Dsa
+      - Dsb
+      - Dsc
+      - Dsd
+      - Dwa
+      - Dwb
+      - Dwc
+      - Dwd
+      - Dfa
+      - Dfb
+      - Dfc
+      - Dfd
+      - ET
+      - EF
+
+outcomes:
+  ccw:
+    spatial_res: zcta
+    temporal_res: yearly
+    vars:
+      - anemia
+      - ami
+      - alzh
+      - alzhdmta
+      - atrialfb
+      - cataract
+      - chrnkidn
+      - copd
+      - chf
+      - diabetes
+      - stroke
+      - breastCancer
+      - colorectalCancer
+      - prostateCancer
+      - lungCancer
+      - endometrialCancer
+      - hyperp
+      - glaucoma
+      - hipfrac
+      - ischmcht
+      - depressn
+      - osteoprs
+      - ra_oa
+      - asthma
+      - hyperl
+      - hypert
+      - hypoth
+
+
+
+data_dict:
+  pm25: "Particulate Matter (PM2.5) concentration in micrograms per cubic meter"
+  no2: "Nitrogen Dioxide (NO2) concentration in parts per billion"
+  o3: "Ozone (O3) concentration in parts per billion"
+  sph: "Specific Humidity (sph) in kg/kg"
+  vpd: "Vapor Pressure Deficit (vpd) in Pascals"
+  tmmn: "Minimum Temperature (tmmn) in degrees Celsius"
+  tmmx: "Maximum Temperature (tmmx) in degrees Celsius"
+  pr: "Precipitation (pr) in millimeters"
+  rmin: "Minimum Relative Humidity (rmin) in percentage"
+  rmax: "Maximum Relative Humidity (rmax) in percentage"
+  srad: "Solar Radiation (srad) in Watts per square meter"
+  vs: "Wind Speed (vs) in meters per second"
+  th: "Temperature Humidity Index (th) in degrees Celsius"
+  anemia: "Anemia including ICD10 codes: D50-D53, D55-D64"
+  ami: "Acute Myocardial Infarction including ICD10 codes: I21, I22"
+  alzh: "Alzheimer's Disease including ICD10 codes: G30"
+  alzhdmta: "Alzheimer's Disease and Related Disorders or Senile Dementia including ICD10 codes: F01.5, F02.8, F03.9, F04-F06, G13, G30, G31, G91.4, G94, R41.81, R54"
+  atrialfb: "Atrial Fibrillation including ICD10 codes: I48.0, I48.2, I48.91"
+  cataract: "Cataract including ICD10 codes: H25-H27, H43, Q12.0, Z96.1"
+  chrnkidn: "Chronic Kidney Disease including ICD10 codes: A18.11, B52.0, C64, C68.9, D30.0*, D41, D59.3, E08, E09, E10, E11, E13, E74.8, I12.0, I13, I70.1, I72.2, K76.7, M10.3, N00-N08, N13-N19, N25, N26, Q61, Q62, R94.4"
+  copd: "Chronic Obstructive Pulmonary Disease and Bronchiectasis including ICD10 codes: J40, J41, J42, J43, J44, J47"
+  chf: "Congestive Heart Failure including ICD10 codes: I09.81, I11.0, I13, I50"
+  diabetes: "Diabetes including ICD10 codes: E08, E09, E10, E11, E13"
+  stroke: "Stroke / Transient Ischemic Attack including ICD10 codes: G45, G46, G97, I60, I61,I63, I66,I67.8*, I97.8"
+  breastCancer: "Breast Cancer including ICD10 codes: C50.**, D05.**"
+  colorectalCancer: "Colorectal Cancer including ICD10 codes: C18.0, C18.1, C18.2, C18.3, C18.4, C18.5, C18.6, C18.7, C18.8, C18.9, C19, C20, D01.0, D01.1, D01.2, Z85.038, Z85.048"
+  prostateCancer: "Prostate Cancer including ICD10 codes: C61, D07.5, Z85.46"
+  lungCancer: "Lung Cancer including ICD10 codes: C34.00, C34.01, C34.02, C34.10, C34.11, C34.12, C34.2, C34.30, C34.31, C34.32, C34.80, C34.81, C34.82, C34.90, C34.91, C34.92, D02.20, D02.21, D02.22, Z85.118"
+  endometrialCancer: "Endometrial Cancer including ICD10 codes: C54.1, C54.2, C54.3, C54.9, D07.0, Z85.42."
+  hyperp: "Benign Prostatic Hyperplasia including ICD10 codes: N40, N42.83"
+  glaucoma: "Glaucoma including ICD10 codes: H35.89, H40, H47.23*"
+  hipfrac: "Hip/Pelvic Fracture including ICD10 codes: M80, M84, S32"
+  ischmcht: "Ischemic Heart Disease including ICD10 codes: I20, I21, I22, I24, I25"
+  depressn: "Depression including ICD10 codes: F31, F32, F33, F34.1"
+  osteoprs: "Osteoporosis including ICD10 codes: M81.0, M81.6, M81.8"
+  ra_oa: "Rheumatoid Arthritis / Osteoarthritis including ICD10 codes: M05, M06"
+  asthma: "Asthma including ICD10 codes: J44, J45"
+  hyperl: "Hyperlipidemia including ICD10 codes: E78.0, E78.1, E78.2, E78.3, E78.4, E78.5"
+  hypert: "Hypertension including ICD10 codes: H35.03*, I10, I11, I12, I13, I15, I67.4, N26.2"
+  hypoth: "Acquired Hypothyroidism including ICD10 codes: E01.8, E02, E03.2, E03.3, E03.8, E03.9, E89.0"
