@@ -1,26 +1,54 @@
 """Main benchmarking script for HealthXDataset.
 
-Two modes, selected by ``mode`` (formats | scaling | all):
+Three modes, selected by ``mode`` (formats | scaling | traintime | all):
 
-  formats   For each on-disk format (daily_parquet, yearly_mmap_dense,
-            yearly_mmap_sparse) time `n_samples` random ``__getitem__`` reads
-            and record read latency, RSS, and on-disk size.
-  scaling   On yearly_mmap_dense, sweep (num_workers, batch_size, prefetch) and
-            measure DataLoader throughput over `n_batches` batches per cell.
+  formats    For each on-disk format (daily_parquet, yearly_mmap_dense,
+             yearly_mmap_sparse) time `n_samples` random ``__getitem__`` reads
+             and record read latency, RSS, and on-disk size.
+  scaling    Sweep (num_workers, batch_size, prefetch) on ``scaling_format``
+             (default yearly_mmap_dense) and measure raw DataLoader throughput
+             + whole-tree RSS over `n_batches` batches per cell.
+  traintime  The question that actually decides training: does the loader hide
+             behind the GPU step? Simulate the step with ``time.sleep(train_t)``
+             per batch (train_t≈2 s for a ~100M bf16 model on an H100), run a
+             real DataLoader sweeping (num_workers, prefetch_factor), and report
+             ``stall = wall - n_batches*train_t`` — the time the GPU would sit
+             idle waiting for data. stall ≈ 0 ⇒ the loader is NOT the bottleneck.
+
+The yearly mmaps are stored transposed ``(day, zcta)``, so a ``window``-day read
+is one contiguous row-slice; the loaders mmap them lazily per worker.
+
+Two levers govern whether the loader keeps up — and they are the whole story:
+  1. Storage substrate (``data_root``). ``data_root=data`` reads the shared NFS
+     store; ``data_root=/dev/shm/legoloaderx_data`` reads node-local RAM after
+     staging with ``benchmarking/stage_shm.sh``. Many concurrent workers reading
+     mmaps from NFS thrash on read contention (8 workers ~79 s first sample);
+     from /dev/shm they are healthy (~0.17 s/sample, nw=8). The format ranking
+     even FLIPS with substrate — on NFS sparse wins (fewer bytes over the wire);
+     on /dev/shm dense wins (RAM has no bandwidth limit, so CSR densify CPU cost
+     dominates). daily_parquet is far slower either way and OOM-prone at high
+     worker counts (~7,600 tiny file-opens/sample vs ~92 for the mmaps).
+     Production = dense on /dev/shm.
+  2. Prefetch (``prefetch_factor``). With workers prefetching ahead during the
+     simulated step, the per-sample gather overlaps with training; raising
+     prefetch is what collapses ``stall`` toward 0. (PyTorch has no
+     prefetch_factor=0; pf=1 == no prefetch-ahead. nw=0 has no prefetch and is
+     the fully-serial worst-case baseline.)
 
 Everything is driven by Hydra (``conf/benchmark.yaml``). The ``var_dict`` is a
 shared config group (``conf/var_dict/``) mirroring the climhealth workload, so
 the same file feeds the loaders and this benchmark. Override on the CLI, e.g.
 
     python benchmarking/benchmark.py var_dict=lego_small mode=formats
-    python benchmarking/benchmark.py n_samples=100 batch_sizes=[32,64] n_batches=15
+    python benchmarking/benchmark.py mode=traintime data_root=/dev/shm/legoloaderx_data \
+        train_t=2.0 scaling_format=yearly_mmap_dense
 
 Build the formats first via
     snakemake -s snakefile.smk         --cores N --config format=<fmt>
     snakemake -s snakefile_health.smk  --cores N --config format=<fmt>
 """
 from __future__ import annotations
-import gc, json, socket, sys, time
+import gc, json, socket, time
 from pathlib import Path
 
 
@@ -29,7 +57,7 @@ import numpy as np
 import psutil
 import torch
 from omegaconf import DictConfig, OmegaConf
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 
 from legoloaderx import HealthXDataset
 
@@ -270,9 +298,10 @@ def time_cell(ds, num_workers, batch_size, prefetch_factor, persistent_workers, 
 
 
 def run_scaling(cfg, var_dict, canonical, data_root):
-    print("\n[scaling] building dataset (yearly_mmap_dense)...")
+    fmt = cfg.scaling_format
+    print(f"\n[scaling] building dataset ({fmt})...")
     t0 = time.perf_counter()
-    ds = make_dataset(cfg, var_dict, "yearly_mmap_dense", canonical, data_root)
+    ds = make_dataset(cfg, var_dict, fmt, canonical, data_root)
     init_ms = (time.perf_counter() - t0) * 1000.0
     print(f"  init_ms={init_ms:.1f}, len={len(ds)}")
 
@@ -331,6 +360,89 @@ def plot_scaling(scaling, size, cfg, n_nodes):
 
 
 # --------------------------------------------------------------------------
+# mode: traintime
+# --------------------------------------------------------------------------
+
+def traintime_cell(ds, pool, num_workers, prefetch_factor, train_t):
+    """Run one optimizer unit (`len(pool)` batches of batch_size 1) through a real
+    DataLoader, sleeping `train_t` s after each batch to stand in for the GPU step.
+
+    Returns whether the gather hides behind training. `ttfb` (worker spawn + first
+    page-in) is measured on a warmup sample and NOT charged to the unit, since it
+    is a one-time startup cost. `stall = wall - n_batches*train_t` is the GPU idle
+    time; ~0 means the loader keeps up.
+    """
+    proc = psutil.Process()
+    kw = dict(batch_size=1, shuffle=False, num_workers=num_workers,
+              persistent_workers=num_workers > 0)
+    if num_workers > 0:
+        kw["prefetch_factor"] = prefetch_factor
+    loader = DataLoader(Subset(ds, pool), **kw)
+    n_batches = len(pool)
+
+    it = iter(loader)
+    t0 = time.perf_counter()
+    next(it)                                   # warmup: spawn workers, page in
+    ttfb = time.perf_counter() - t0
+    time.sleep(train_t)                        # "train" the warmup batch too
+    rss_peak, _ = _tree_rss_mb(proc)
+
+    t_unit = time.perf_counter()
+    consumed = 1
+    for _ in it:
+        tr, _ = _tree_rss_mb(proc)
+        rss_peak = max(rss_peak, tr)
+        time.sleep(train_t)                    # GPU step stand-in
+        consumed += 1
+    rest = time.perf_counter() - t_unit
+
+    wall = ttfb + train_t + rest               # full unit wall-clock
+    floor = n_batches * train_t                # ideal: pure training
+    stall = wall - floor                       # gather NOT hidden by training
+    n_kids = len(proc.children(recursive=True))
+    del loader, it
+    gc.collect()
+    return {
+        "num_workers": num_workers,
+        "prefetch_factor": prefetch_factor if num_workers > 0 else None,
+        "n_batches": consumed, "train_t": train_t,
+        "ttfb_s": ttfb, "wall_s": wall, "floor_s": floor,
+        "stall_s": stall, "stall_pct": 100.0 * stall / wall if wall > 0 else 0.0,
+        "rss_peak_gb": rss_peak / 1e3, "rss_per_worker_gb": rss_peak / 1e3 / max(n_kids, 1),
+    }
+
+
+def run_traintime(cfg, var_dict, canonical, data_root):
+    fmt = cfg.scaling_format
+    train_t = cfg.train_t
+    n_batches = cfg.unit_batches
+    print(f"\n[traintime] building dataset ({fmt}); unit={n_batches} batches, "
+          f"train_t={train_t}s/batch, floor={n_batches * train_t:.1f}s")
+    ds = make_dataset(cfg, var_dict, fmt, canonical, data_root)
+    rng = np.random.default_rng(cfg.seed)
+    pool = [int(rng.integers(0, len(ds))) for _ in range(n_batches)]  # fixed, reused per cell
+
+    print(f"  {'nw':>3} {'pf':>3} {'ttfb_s':>8} {'wall_s':>8} {'floor_s':>8} "
+          f"{'stall_s':>8} {'stall%':>7} {'rss_pk':>7} {'rss/wkr':>8}")
+    cells = []
+    for nw in cfg.traintime_workers:
+        pfs = [None] if nw == 0 else list(cfg.traintime_prefetch)
+        for pf in pfs:
+            r = traintime_cell(ds, pool, nw, pf or 2, train_t)
+            cells.append(r)
+            print(f"  {nw:>3} {str(pf or '—'):>3} {r['ttfb_s']:>8.2f} {r['wall_s']:>8.2f} "
+                  f"{r['floor_s']:>8.2f} {r['stall_s']:>8.2f} {r['stall_pct']:>6.1f}% "
+                  f"{r['rss_peak_gb']:>7.2f} {r['rss_per_worker_gb']:>8.2f}")
+    best = min(cells, key=lambda c: c["stall_s"], default=None)
+    if best:
+        print(f"  best: stall={best['stall_s']:.2f}s ({best['stall_pct']:.1f}%) "
+              f"at nw={best['num_workers']}, pf={best['prefetch_factor']} "
+              f"(stall≈0 ⇒ loader hidden behind the {train_t}s step)")
+    return {"format": fmt, "train_t": train_t, "unit_batches": n_batches,
+            "n_lead_dates": len(ds), "cells": cells}
+
+
+# --------------------------------------------------------------------------
 
 @hydra.main(config_path="../conf", config_name="benchmark", version_base=None)
 def main(cfg: DictConfig):
@@ -377,6 +489,13 @@ def main(cfg: DictConfig):
             plot_scaling(scaling, size, cfg, len(canonical))
         except Exception as e:
             print(f"scaling plot failed: {e}")
+
+    if cfg.mode in ("traintime", "all"):
+        print(f"\n=== train-time simulation (train_t={cfg.train_t}s/batch) ===")
+        traintime = run_traintime(cfg, var_dict, canonical, data_root)
+        out["traintime"] = traintime
+        (RESULTS_DIR / "traintime.json").write_text(json.dumps(out, indent=2))
+        print(f"→ wrote {RESULTS_DIR / 'traintime.json'}")
 
 
 if __name__ == "__main__":

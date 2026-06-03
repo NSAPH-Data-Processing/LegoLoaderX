@@ -18,7 +18,7 @@ min_year: 2000
 max_year: 2014
 seed: 42
 
-mode: all                   # formats | scaling | all
+mode: all                   # formats | scaling | traintime | all
 
 # --- format comparison: time `n_samples` random __getitem__ reads per format ---
 # The per-sample spread is the latency distribution; no outer repetition needed.
@@ -31,6 +31,18 @@ n_batches: 5
 num_workers: [0, 2, 4, 8]
 batch_sizes: [1, 4]
 prefetch: [1, 2, 4]
+scaling_format: yearly_mmap_dense   # which built format scaling/traintime read
+
+# --- train-time simulation: does the loader hide behind the GPU step? ---
+# Run `unit_batches` batches of batch_size 1 through a real DataLoader, sleeping
+# `train_t` s after each batch to stand in for the GPU step, and report `stall`
+# (GPU idle time waiting on data; ~0 == loader keeps up). Sweeps `traintime_workers`
+# x `traintime_prefetch` (prefetch applies only when num_workers>0; nw=0 is the
+# fully-serial baseline). Reads `scaling_format` (dense | sparse) from `data_root`.
+train_t: 2.0                # s per step; ~2 s for a ~100M bf16 model on an H100
+unit_batches: 32            # batches per optimizer unit
+traintime_workers: [0, 4, 16]
+traintime_prefetch: [2]
 
 hydra:
   run:
