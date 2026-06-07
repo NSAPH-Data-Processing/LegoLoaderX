@@ -8,7 +8,7 @@ import geopandas as gpd
 import hydra
 import numpy as np
 import pandas as pd
-from src.synthgen_denom import get_zcta_data_with_geo_pop
+from src.synthetic_denom import get_zcta_data_with_geo_pop
 
 # Configure logging
 LOGGER = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ def generate_synthetic_data(zcta_data, date_list, var_name, disease_params):
     return concat_df
 
 
-@hydra.main(config_path="../conf/synthgen", config_name="config", version_base=None)
+@hydra.main(config_path="../conf/synthetic", config_name="config", version_base=None)
 def main(cfg):
     """
     Generating synthetic health data for data loader.

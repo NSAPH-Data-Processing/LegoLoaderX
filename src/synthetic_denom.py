@@ -126,7 +126,7 @@ def get_zcta_data_with_geo_pop(
     return zcta_data
 
 
-@hydra.main(config_path="../conf/synthgen", config_name="config", version_base=None)
+@hydra.main(config_path="../conf/synthetic", config_name="config", version_base=None)
 def main(cfg):
     """
     Generate synthetic denominator data for preprocessing_denom.py.
