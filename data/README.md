@@ -1,9 +1,10 @@
-## Data symlinks
+## Data setup
 
-Follow the following steps to create the necessary symlinks for this folder.
+Set up the `data/` tree by running the helper script — it creates the needed
+folders and symlinks from `conf/datapaths`:
 
+```bash
+python src/create_dir_paths.py datapaths=datapaths_cannon   # or datapaths_local / datapaths_fasse
 ```
-mkdir data/input/
-cd data/input
-ln -s /n/dominici_lab/lab/lego .
-```
+
+Pick the `datapaths` config that matches your host. That's it.
