@@ -26,19 +26,28 @@ Key points:
 
 ## Installation
 
-Install directly from GitHub:
+There are **two audiences**, and they install different things:
+
+**1. Using the library** (you just want to `import legoloaderx` in your own project):
 
 ```
 pip install git+https://github.com/your-org/LegoLoaderX.git
 ```
 
-Or for development:
+This pulls only the minimal runtime deps the dataloader needs (declared in
+`setup.py`: numpy, torch, pandas, pyarrow, duckdb, hydra-core). You do **not** get the
+data-processing pipeline dependencies — that's intentional, so downstream users aren't
+forced to install heavyweights like geopandas/GDAL, snakemake, or transformers.
 
-```
-git clone https://github.com/your-org/LegoLoaderX.git
-cd LegoLoaderX
-pip install -e .
-```
+**2. Running the pipelines** (building the feature store from the Lego Data Model):
+see [Generating the Feature Store](#generating-the-feature-store) — this needs the full,
+pinned environment in `requirements.txt`, not just the package.
+
+> **How the env files fit together.** `environment.yaml` creates the conda env and its
+> only pip step is `pip install -e .`, i.e. it installs `setup.py`'s **minimal core**.
+> `requirements.txt` is the **separate, complete** set for running `src/` (adds
+> geopandas, scipy, snakemake, transformers, pytest, matplotlib, … with version pins).
+> So building the env is **two steps** — see below.
 
 ## Dataloader Architecture
 
@@ -69,10 +78,18 @@ The Lego Data Model is designed to house datasets that are easy to piece togethe
 
 ## Generating the Feature Store 
 
-Build the conda environment
+Build the conda environment, then install the pipeline dependencies (two steps —
+`environment.yaml` only installs the package's core deps via `-e .`):
 ```
-conda env create -f environment.yaml
+conda env create -f environment.yaml     # creates the legoloaderX env + editable package (core deps only)
+conda activate legoloaderX
+pip install -r requirements.txt          # pipeline/dev deps: geopandas, snakemake, pytest, ...
 ```
+
+> **geopandas / GDAL.** geopandas (used by the synthetic-data scripts in `src/`) needs
+> system GDAL/PROJ and can fail to pip-install on a bare machine. If you hit
+> `ModuleNotFoundError: geopandas`, install it from conda-forge into the same env:
+> `conda install -c conda-forge geopandas`.
 
 Modify the configuration files in config/
 
