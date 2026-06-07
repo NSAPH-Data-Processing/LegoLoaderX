@@ -12,8 +12,9 @@ temporal_res: daily
 
 vg_name: ${hydra:runtime.choices.var_group}
 
-input_dir: data/input/
-output_dir: data/output/
+# Input/output paths are fixed by the datapaths tree (see conf/datapaths): inputs
+# live under ${datapaths.basefolder}/input, covariate outputs under
+# ${datapaths.basefolder}/covars.
 
 uniqid_nm: us_uniqueid__census
 uniqid_dir: lego/geoboundaries/us_geoboundaries__census/
