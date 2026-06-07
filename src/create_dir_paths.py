@@ -5,16 +5,13 @@ from omegaconf import DictConfig
 
 LOGGER = logging.getLogger(__name__)
 
-def init_folder(datapath="data", folder_cfg=None):
+def init_folder(folder_cfg=None):
     folder_dict = folder_cfg.dirs
-    if not os.path.exists(datapath):
-        LOGGER.info(f"Error: {datapath} does not exists.")
-        return
-    
-    # appending name of geography to root datapath
-    if folder_cfg.name is not None:
-        datapath = os.path.join(datapath, folder_cfg.name)
-        os.makedirs(datapath, exist_ok=True)
+
+    # basefolder is the root of the data tree. It may be relative (e.g. "data",
+    # resolved against the cwd) or an absolute path for a shared deploy.
+    datapath = folder_cfg.basefolder
+    os.makedirs(datapath, exist_ok=True)
 
     create_subfolders_and_links(datapath=datapath, folder_dict=folder_dict)
 

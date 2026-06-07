@@ -1,8 +1,10 @@
-name: null
+# basefolder is the root of the data tree (relative to cwd, or an absolute path
+# for a shared deploy). All paths in the pipeline are fixed relative to it.
+basefolder: data
 
 dirs:
   input:
     lego: /n/dominici_lab/lab/lego
-  covars: /n/dominici_lab/lab/lego_loader_x/output
+  covars: null
   health: /n/dominici_lab/lab/lego_loader_x/health_synthetic
   embeddings: /n/dominici_lab/lab/lego_loader_x/embeddings
