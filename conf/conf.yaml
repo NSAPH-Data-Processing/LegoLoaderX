@@ -4,7 +4,7 @@ defaults:
   - datapaths: datapaths_cannon
 
 # this should be set directly by script
-timestr: "20000101"
+year: 2000
 var: tmmx
 
 spatial_res: zcta
