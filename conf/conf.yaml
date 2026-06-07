@@ -12,9 +12,11 @@ temporal_res: daily
 
 vg_name: ${hydra:runtime.choices.var_group}
 
-# Input/output paths are fixed by the datapaths tree (see conf/datapaths): inputs
-# live under ${datapaths.basefolder}/input, covariate outputs under
-# ${datapaths.basefolder}/covars.
+# Input/output roots. Defaults match the datapaths tree (see conf/datapaths):
+# inputs under data/input, covariate outputs under data/covars. Override
+# output_dir (e.g. output_dir=data/health) to write a separate idx2zcta elsewhere.
+input_dir: data/input
+output_dir: data/covars
 
 uniqid_nm: us_uniqueid__census
 uniqid_dir: lego/geoboundaries/us_geoboundaries__census/

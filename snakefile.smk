@@ -64,7 +64,15 @@ for vg in config["var_groups"]:
 # Expand over all valid combinations of variable groups, variables, and dates
 rule all:
     input:
+        "data/covars/idx2zcta.parquet",
         output_file_lst
+
+# Build the canonical row-index -> zcta order (data/covars/idx2zcta.parquet) once
+rule idx2zcta:
+    output:
+        "data/covars/idx2zcta.parquet"
+    shell:
+        "python src/preprocessing_idx2zcta.py"
 
 # have excluded input entry for now
 rule preprocess:

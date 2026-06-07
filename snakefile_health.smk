@@ -20,6 +20,7 @@ print(f"Using dir:\n  - lego_dir: {lego_dir}\n")
 # Rule: final output is one sentinel file per ICD/year (Dec 31)
 rule all:
     input:
+        "data/health/idx2zcta.parquet",
         expand(
             f"data/health/ccw/{{var}}/{{var}}__{{year}}1231.parquet",
             var=vars,
@@ -29,6 +30,15 @@ rule all:
             f"data/health/denom/denom__{{year}}.parquet",
             year=years
         )
+
+# Build the canonical row-index -> zcta order into the health root. Same script,
+# same source as covars (see snakefile.smk) so the order is identical everywhere —
+# the index must match across covars/treatments/outcomes to gather aligned rows.
+rule idx2zcta:
+    output:
+        "data/health/idx2zcta.parquet"
+    shell:
+        "python src/preprocessing_idx2zcta.py output_dir=data/health"
 
 # Rule: preprocess all data for given var and year
 rule preprocess_health:
