@@ -1,5 +1,4 @@
 year: 2010
-horizons: [30, 90, 180] # Horizons in days | must be in data
 
 var: diabetes
 
