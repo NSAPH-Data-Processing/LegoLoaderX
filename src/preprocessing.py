@@ -28,12 +28,15 @@ def main(cfg):
         time_query = f"""SELECT {cfg.spatial_res}, DATE '{year}-{month}-{day}' AS date"""
         match_query = f"""ON (i.{cfg.spatial_res} = d.{cfg.spatial_res} AND i.date = d.date)"""
 
+    # paths are fixed by the datapaths tree (conf/datapaths)
+    base = cfg.datapaths.basefolder
+
     # getting input filepath
     cfg_vg = cfg.var_group
-    input_fname = f"{cfg.input_dir}/{cfg_vg.lego_dir}/{cfg_vg.lego_nm}__{year}.parquet"
+    input_fname = f"{base}/input/{cfg_vg.lego_dir}/{cfg_vg.lego_nm}__{year}.parquet"
 
     # setting output filepath
-    out_dir = f"{cfg.output_dir}/{cfg.vg_name}/{cfg.var}/"
+    out_dir = f"{base}/covars/{cfg.vg_name}/{cfg.var}/"
     os.makedirs(out_dir, exist_ok=True)
 
     output_fname = f"{out_dir}/{cfg.var}__{year}"
@@ -44,7 +47,7 @@ def main(cfg):
     output_fname += ".parquet"
 
     # getting unique id list
-    uniq_path = f"{cfg.input_dir}/{cfg.uniqid_dir}/{cfg.uniqid_nm}/{cfg.spatial_res}_yearly/{cfg.uniqid_nm}__{cfg.spatial_res}_yearly__{year}.parquet"
+    uniq_path = f"{base}/input/{cfg.uniqid_dir}/{cfg.uniqid_nm}/{cfg.spatial_res}_yearly/{cfg.uniqid_nm}__{cfg.spatial_res}_yearly__{year}.parquet"
 
     duckdb.execute(f"""
         CREATE TABLE index AS 
