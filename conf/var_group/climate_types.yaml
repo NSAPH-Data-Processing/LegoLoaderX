@@ -1,49 +1,40 @@
 var_group_name: climate_types
-vars: ["Af", "Am", "Aw", "BWh", "BWk", "BSh", "BSk",
-       "Csa", "Csb", "Csc", "Cwa", "Cwb", "Cwc",
-       "Cfa", "Cfb", "Cfc", "Dsa", "Dsb", "Dsc",
-       "Dsd", "Dwa", "Dwb", "Dwc", "Dwd", "Dfa",
-       "Dfb", "Dfc", "Dfd", "ET", "EF"]
+vars: ["pct_af", "pct_am", "pct_aw", "pct_bwh", "pct_bwk", "pct_bsh", "pct_bsk",
+       "pct_csa", "pct_csb", "pct_csc", "pct_cwa", "pct_cwb", "pct_cwc",
+       "pct_cfa", "pct_cfb", "pct_cfc", "pct_dsa", "pct_dsb", "pct_dsc",
+       "pct_dsd", "pct_dwa", "pct_dwb", "pct_dwc", "pct_dwd", "pct_dfa",
+       "pct_dfb", "pct_dfc", "pct_dfd", "pct_et", "pct_ef"]
 descriptions:
-  Af: "Tropical rainforest: consistently hot and wet throughout the year, with no real dry season."
-  Am: "Tropical monsoon climate: warm year-round with a pronounced wet season and a brief drier interval."
-  Aw: "Tropical savanna with a dry winter; hot temperatures and marked wet-dry seasonality."
-  BWh: "True hot desert, with very sparse rainfall and high year-round temperatures."
-  BWk: "Cold desert, extremely arid but with cool to cold winters."
-  BSh: "Semi-arid steppe in warm latitudes; grassland climate drier than temperate but wetter than desert."
-  BSk: "Cold steppe: semi-arid grassland with cool winters and limited rainfall."
-  Csa: "Mediterranean climate with hot, dry summers and mild, wet winters."
-  Csb: "Mediterranean climate featuring warm rather than hot summers, with wet winters."
-  Csc: "Rare Mediterranean variant with cool summers; found in a few highland coastal locations."
-  Cwa: "Subtropical climate with hot humid summers fed by monsoon rains and dry winters."
-  Cwb: "Subtropical highland climate with warm summers, dry winters, and monsoon-driven rainfall."
-  Cwc: "Cool subtropical highland climate with monsoonal wet summers and dry winters."
-  Cfa: "Humid subtropical climate with hot humid summers and mild winters, with no dry season."
-  Cfb: "Mild oceanic climate with cool summers, cool winters, and year-round moisture."
-  Cfc: "Cool subpolar oceanic climate with short mild summers and evenly distributed precipitation."
-  Dsa: "Continental climate with hot summers, cold winters, and a drier summer than winter."
-  Dsb: "Continental climate with warm summers, cold winters, and a dry-summer pattern."
-  Dsc: "Subarctic interior climate with cool summers, very cold winters, and drier summers."
-  Dsd: "Extremely cold subarctic climate with dry summers; winters reach severe lows."
-  Dwa: "Hot-summer continental climate driven by monsoons, with cold, dry winters."
-  Dwb: "Warm-summer continental climate with monsoonal summer rains and cold, dry winters."
-  Dwc: "Subarctic climate with monsoonal summer rains and bitterly cold, dry winters."
-  Dwd: "Severe subarctic climate with monsoon summers and extraordinarily cold, dry winters."
-  Dfa: "Continental climate with hot humid summers and cold winters, precipitation year-round."
-  Dfb: "Continental climate with warm humid summers and cold snowy winters, precipitation year-round."
-  Dfc: "Subarctic climate with short cool summers and long, very cold winters."
-  Dfd: "Extremely cold subarctic climate with brief cool summers and punishing winter temperatures."
-  ET: "Tundra: treeless polar or alpine climate where the warmest month averages just above freezing."
-  EF: "Ice cap climate: permanent snow and ice, with no month averaging above freezing."
-# The following vars are commented out as they are not currently used
-# Uncomment if needed in the future
-# vars: [
-#     "pct_af", "pct_am", "pct_aw", "pct_bwh", "pct_bwk", "pct_bsh", "pct_bsk",
-#     "pct_csa", "pct_csb", "pct_csc", "pct_cwa", "pct_cwb", "pct_cwc",
-#     "pct_cfa", "pct_cfb", "pct_cfc", "pct_dsa", "pct_dsb", "pct_dsc",
-#     "pct_dsd", "pct_dwa", "pct_dwb", "pct_dwc", "pct_dwd", "pct_dfa",
-#     "pct_dfb", "pct_dfc", "pct_dfd", "pct_et", "pct_ef"
-#   ]
+  pct_af: "Tropical rainforest: consistently hot and wet throughout the year, with no real dry season."
+  pct_am: "Tropical monsoon climate: warm year-round with a pronounced wet season and a brief drier interval."
+  pct_aw: "Tropical savanna with a dry winter; hot temperatures and marked wet-dry seasonality."
+  pct_bwh: "True hot desert, with very sparse rainfall and high year-round temperatures."
+  pct_bwk: "Cold desert, extremely arid but with cool to cold winters."
+  pct_bsh: "Semi-arid steppe in warm latitudes; grassland climate drier than temperate but wetter than desert."
+  pct_bsk: "Cold steppe: semi-arid grassland with cool winters and limited rainfall."
+  pct_csa: "Mediterranean climate with hot, dry summers and mild, wet winters."
+  pct_csb: "Mediterranean climate featuring warm rather than hot summers, with wet winters."
+  pct_csc: "Rare Mediterranean variant with cool summers; found in a few highland coastal locations."
+  pct_cwa: "Subtropical climate with hot humid summers fed by monsoon rains and dry winters."
+  pct_cwb: "Subtropical highland climate with warm summers, dry winters, and monsoon-driven rainfall."
+  pct_cwc: "Cool subtropical highland climate with monsoonal wet summers and dry winters."
+  pct_cfa: "Humid subtropical climate with hot humid summers and mild winters, with no dry season."
+  pct_cfb: "Mild oceanic climate with cool summers, cool winters, and year-round moisture."
+  pct_cfc: "Cool subpolar oceanic climate with short mild summers and evenly distributed precipitation."
+  pct_dsa: "Continental climate with hot summers, cold winters, and a drier summer than winter."
+  pct_dsb: "Continental climate with warm summers, cold winters, and a dry-summer pattern."
+  pct_dsc: "Subarctic interior climate with cool summers, very cold winters, and drier summers."
+  pct_dsd: "Extremely cold subarctic climate with dry summers; winters reach severe lows."
+  pct_dwa: "Hot-summer continental climate driven by monsoons, with cold, dry winters."
+  pct_dwb: "Warm-summer continental climate with monsoonal summer rains and cold, dry winters."
+  pct_dwc: "Subarctic climate with monsoonal summer rains and bitterly cold, dry winters."
+  pct_dwd: "Severe subarctic climate with monsoon summers and extraordinarily cold, dry winters."
+  pct_dfa: "Continental climate with hot humid summers and cold winters, precipitation year-round."
+  pct_dfb: "Continental climate with warm humid summers and cold snowy winters, precipitation year-round."
+  pct_dfc: "Subarctic climate with short cool summers and long, very cold winters."
+  pct_dfd: "Extremely cold subarctic climate with brief cool summers and punishing winter temperatures."
+  pct_et: "Tundra: treeless polar or alpine climate where the warmest month averages just above freezing."
+  pct_ef: "Ice cap climate: permanent snow and ice, with no month averaging above freezing."
 min_year: 2000
 max_year: 2020
 valid_normalize: true

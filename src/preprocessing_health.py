@@ -1,94 +1,64 @@
-from datetime import date, timedelta
+import calendar
+import logging
+import os
+
 import duckdb
 import hydra
-import os
-import logging
-import calendar
-from tqdm import tqdm
+import numpy as np
+import pandas as pd
 
 
-# Configure logging
 LOGGER = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+
 @hydra.main(config_path="../conf/health", config_name="config", version_base=None)
 def main(cfg):
-    """
-    Preprocess health data for data loader.
-    Current implementation is for the LEGO dataset.
-    Only zcta daily data is supported (with hardcoded vars)
-    """
+    """Build the per-(var, year) dense outcome mmap in idx2zcta row order.
 
-    conn = duckdb.connect()
-
-    LOGGER.info(f"Processing data for {cfg.var}")
+    One ``.npy`` per (var, year): ``(n_days, n_zctas)`` int16 of **same-day
+    counts**, time axis first so a contiguous day-window is a fast row-slice.
+    Absent zcta-days are ``0`` (the sparse source lists only nonzero event-days).
+    Any forecast windowing is a read-time concern (no precomputed horizons).
+    """
+    year = int(cfg.year)
     resolution = f"{cfg.min_spatial_res}_{cfg.min_temporal_res}"
     input_files = f"{cfg.input_dir}/{cfg.lego_dir}/medpar_outcomes/{cfg.vg_name}/{resolution}/{cfg.lego_prefix}_*.parquet"
-    output_folder = f"{cfg.output_dir}/{cfg.vg_name}/{cfg.var}"
-    os.makedirs(output_folder, exist_ok=True)
 
-    year = cfg.year
-    horizons = cfg.horizons
-    LOGGER.info(f"Processing year {year}")
+    out_dir = f"{cfg.output_dir}/{cfg.vg_name}/{cfg.var}"
+    os.makedirs(out_dir, exist_ok=True)
+    output_fname = f"{out_dir}/{cfg.var}__{year}.npy"
 
-    # get days list for a given year with calendar days
-    days_list = [(year, month, day) for month in range(1, 13) for day in range(1, calendar.monthrange(year, month)[1] + 1)]
-    for day in tqdm(days_list, desc="Processing days"):
-        date_str = f"{day[0]}{day[1]:02d}{day[2]:02d}"
-        output_fname = f"{output_folder}/{cfg.var}__{date_str}.parquet"
+    idx2zcta = pd.read_parquet(f"{cfg.output_dir}/idx2zcta.parquet")["zcta"].tolist()
+    n_zctas = len(idx2zcta)
+    z2i = {z: i for i, z in enumerate(idx2zcta)}
+    n_days = 366 if calendar.isleap(year) else 365
 
-        t = date(day[0], day[1], day[2])
+    LOGGER.info(f"Processing {cfg.var} {year}")
+    df = duckdb.execute(f"""
+        SELECT zcta, date, n
+        FROM '{input_files}'
+        WHERE var = '{cfg.var}' AND date >= DATE '{year}-01-01' AND date <= DATE '{year}-12-31'
+    """).df()
 
-        # Build queries for each horizon, starting with same-day (horizon = 0)
-        queries = []
+    mapped = df["zcta"].map(z2i).fillna(-1).astype(np.int64).to_numpy()  # -1 = zcta not in idx2zcta
+    keep = mapped >= 0
+    rows = mapped[keep]
+    doys = ((pd.to_datetime(df["date"]) - pd.Timestamp(year=year, month=1, day=1)).dt.days.to_numpy())[keep]
+    vals = df["n"].to_numpy()
+    if vals.size and vals.max() > 32_000:
+        raise OverflowError(f"{cfg.var}/{year}: max count {vals.max()} > 32 000; int16 would overflow")
+    vals = vals.astype(np.int16, copy=False)[keep]
 
-        # Same-day count (horizon = 0)
-        queries.append(f"""
-            SELECT 
-                zcta, 
-                0 AS horizon, 
-                n
-            FROM '{input_files}'
-            WHERE
-                var = '{cfg.var}' AND 
-                date = DATE '{t}'
-        """)
+    arr = np.zeros((n_days, n_zctas), dtype=np.int16)
+    arr[doys, rows] = vals
 
-        # Future horizons
-        for horizon in horizons:
-            t_end = t + timedelta(days=horizon)
-            queries.append(f"""
-                SELECT 
-                    zcta, 
-                    {horizon} AS horizon, 
-                    SUM(n) AS n
-                FROM '{input_files}'
-                WHERE 
-                    var = '{cfg.var}' AND 
-                    date >= DATE '{t}' AND 
-                    date <= DATE '{t_end}'
-                GROUP BY zcta
-            """)
-
-        # Combine all queries into one
-        full_query = " UNION ALL ".join(queries)
-
-        # Execute and save
-        conn.execute(f"""
-            CREATE OR REPLACE TABLE output AS
-            {full_query}
-        """)
-
-        conn.execute(f"""
-            COPY (SELECT * FROM output ORDER BY zcta, horizon) 
-            TO '{output_fname}'
-        """)
+    np.save(output_fname, arr)
+    LOGGER.info(f"Saved {output_fname}")
 
 
-    conn.close()
-    
 if __name__ == "__main__":
     main()

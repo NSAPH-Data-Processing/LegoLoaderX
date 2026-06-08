@@ -1,8 +1,9 @@
-# Snakemake file for synthetic health data input generation
-# This generates input files that can be processed by snakefile_health.smk
+# Snakemake file for synthetic health data generation.
+# Generates synthetic medicare *raw inputs* under data/input/lego/medicare_synthetic,
+# which snakefile_health.smk then processes (use_synthetic: true) into data/health.
 
 # Load config
-configfile: "conf/synthgen/snakemake.yaml"
+configfile: "conf/synthetic/snakemake.yaml"
 
 # Get config values
 years = config["years"]
@@ -38,7 +39,7 @@ rule generate_synthetic_counts:
         disease_params = lambda wildcards: get_disease_params(wildcards.var),
     shell:
         """
-        python src/synthgen_health.py \
+        python src/synthetic_health.py \
             hydra.run.dir=. \
             year={wildcards.year} \
             {params.disease_params}
@@ -49,7 +50,7 @@ rule generate_synthetic_denom:
         f"data/input/{config['denom_lego_path']}/counts_{{year}}.parquet"
     shell:
         """
-        python src/synthgen_denom.py \
+        python src/synthetic_denom.py \
             hydra.run.dir=. \
             year={wildcards.year}
         """

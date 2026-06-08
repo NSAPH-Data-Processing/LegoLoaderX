@@ -4,7 +4,7 @@ defaults:
   - datapaths: datapaths_cannon
 
 # this should be set directly by script
-timestr: "20000101"
+year: 2000
 var: tmmx
 
 spatial_res: zcta
@@ -12,8 +12,11 @@ temporal_res: daily
 
 vg_name: ${hydra:runtime.choices.var_group}
 
-input_dir: data/input/
-output_dir: data/output/
+# Input/output roots. Defaults match the datapaths tree (see conf/datapaths):
+# inputs under data/input, covariate outputs under data/covars. Override
+# output_dir (e.g. output_dir=data/health) to write a separate idx2zcta elsewhere.
+input_dir: data/input
+output_dir: data/covars
 
 uniqid_nm: us_uniqueid__census
 uniqid_dir: lego/geoboundaries/us_geoboundaries__census/
