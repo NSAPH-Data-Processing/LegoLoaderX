@@ -1,0 +1,40 @@
+# Config for src/benchmark_loader.py — measure HealthXDataset read speed.
+# Defaults are a short smoke run; raise n_samples / n_batches for a confidence run.
+
+data_root: data
+min_year: 2000
+max_year: 2014
+window: 30
+delta_t: 180
+seed: 42
+
+n_nodes: all          # "all" (full idx2zcta) or an int subset
+
+# per-sample read latency: time n_samples random __getitem__ reads (pass 1 then a
+# warm pass over the same indices)
+n_samples: 5
+
+# DataLoader throughput sweep: for each num_workers, draw n_batches and report samples/sec
+num_workers: [0, 2, 4]
+batch_size: 1
+prefetch: 2
+n_batches: 5
+
+# representative workload (yearly confounders + daily treatments + daily outcomes)
+var_dict:
+  confounders:
+    census:
+      temporal_res: yearly
+      vars: [population, median_household_income, pop_poverty]
+  treatments:
+    gridmet:
+      temporal_res: daily
+      vars: [rmax, rmin, pr]
+  outcomes:
+    ccw:
+      temporal_res: daily
+      vars: [diabetes, asthma, anemia]
+
+hydra:
+  run:
+    dir: logs/benchmark/${now:%Y-%m-%d}/${now:%H-%M-%S}
