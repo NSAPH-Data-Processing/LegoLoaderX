@@ -8,6 +8,7 @@ import geopandas as gpd
 import hydra
 import numpy as np
 import pandas as pd
+from src.synthetic_causal import build_extra_rate
 from src.synthetic_denom import get_zcta_data_with_geo_pop
 
 # Configure logging
@@ -16,10 +17,18 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
-def generate_synthetic_data(zcta_data, date_list, var_name, disease_params):
+
+def generate_synthetic_data(zcta_data, date_list, var_name, disease_params, extra_rate=None):
     """
     Generate synthetic health data for ALL dates and ZCTAs at once using vectorized operations
     Much faster than generating one date at a time
+
+    If ``extra_rate`` (a ``(n_days, n_zctas)`` array aligned to ``zcta_data`` row order) is
+    given, it is added to the Poisson rate each day. It carries the known causal terms —
+    ``beta * exposure`` plus ``sum_k gamma_k * confounder_k`` — so the outcome has a known
+    same-day dose-response to a real exposure and depends on real confounders (for ERC /
+    g-computation validation). ``extra_rate=None`` reproduces the original exposure-free
+    behaviour.
     """
     LOGGER.info(
         f"Generating synthetic data for {var_name}: {len(date_list)} dates and {len(zcta_data)} ZCTAs"
@@ -41,10 +50,11 @@ def generate_synthetic_data(zcta_data, date_list, var_name, disease_params):
         )
 
         # Calculate lambda parameters for all ZCTAs at once
-        lambda_params = np.maximum(
-            0.01,
-            disease_params.base_rate + seasonal_effect + lat_effect + lon_effect,
-        )
+        rate = disease_params.base_rate + seasonal_effect + lat_effect + lon_effect
+        if extra_rate is not None:
+            # semi-synthetic causal terms: beta*exposure + sum_k gamma_k*confounder_k
+            rate = rate + extra_rate[day_of_year]
+        lambda_params = np.maximum(0.01, rate)
 
         # Generate all counts at once using vectorized Poisson
         offset = disease_params.population_normalizer * zcta_data["population"]
@@ -103,6 +113,10 @@ def main(cfg):
 
     LOGGER.info(f"Found {len(zcta_data)} ZCTAs for year {cfg.year} with complete data")
 
+    # Known causal terms (beta*exposure + sum_k gamma_k*confounder_k) the outcome depends on.
+    # Built in src/synthetic_causal.py; returns None when disabled -> original behaviour.
+    extra_rate = build_extra_rate(cfg, zcta_data)
+
     # get days list for a given year with calendar days
     days_list = [
         (cfg.year, month, day)
@@ -123,7 +137,8 @@ def main(cfg):
 
     # Generate synthetic data for this disease
     disease_df = generate_synthetic_data(
-        zcta_data, days_list, cfg.synthetic.var_name, disease_params
+        zcta_data, days_list, cfg.synthetic.var_name, disease_params,
+        extra_rate=extra_rate,
     )
 
     # Save synthetic data as input files for the real health processing script
