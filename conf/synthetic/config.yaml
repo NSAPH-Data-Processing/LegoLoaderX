@@ -30,6 +30,38 @@ synthetic:
   population_path: data/input/lego/social/demographics__census/raw/core/zcta__dec__population.parquet
 
   var_name: test
+
+  # Semi-synthetic causal exposure: the outcome rate gets a known `beta * exposure` term so
+  # the ERC / g-computation pipeline can be validated against ground truth. `exposure` is a
+  # REAL covariate read from the dense store (data/covars), so training later sees exactly the
+  # values that generated the outcome. `beta` IS the ground-truth dose-response. Set beta: 0
+  # to disable and recover the original exposure-free behaviour.
+  # PRIMARY EXPOSURE (the ERC target): raw PM2.5, coefficient = beta = ground-truth dose-response.
+  # This is exposure #1 of the 5 environmental exposures (the other 4 are in the list below).
+  beta: 0.01
+  exposure_covars_root: data/covars
+  exposure_var_group: pm25_ushap
+  exposure_var: PM25
+
+  # Every entry below adds `gamma * standardized(var)` to the outcome rate (gamma is the ground
+  # truth). The generator does not distinguish exposures from confounders -- they are all additive
+  # terms -- but they are grouped here by their ROLE so the dataloader can split them:
+  #   * EXPOSURES/treatments (environmental, daily): #2-#5; with PM2.5 above this is 5 exposures.
+  #   * CONFOUNDERS (census/socioeconomic, yearly): 5 confounders, correlated with the exposures.
+  # A naive PM2.5-outcome fit is biased; the ERC model must adjust for ALL of these to recover beta.
+  confounders:
+    # --- 4 more environmental EXPOSURES (daily) ---
+    - {var_group: aqdh,    var: no2,   gamma: 0.020, temporal_res: daily}
+    - {var_group: aqdh,    var: o3,    gamma: 0.015, temporal_res: daily}
+    - {var_group: gridmet, var: tmmx,  gamma: 0.020, temporal_res: daily}
+    - {var_group: gridmet, var: rmax,  gamma: 0.010, temporal_res: daily}
+    # --- 5 census / socioeconomic CONFOUNDERS (yearly) ---
+    - {var_group: census,  var: median_household_income, gamma: -0.020, temporal_res: yearly}
+    - {var_group: census,  var: pop_poverty,             gamma:  0.030, temporal_res: yearly}
+    - {var_group: census,  var: pop_over_65_years,       gamma:  0.030, temporal_res: yearly}
+    - {var_group: census,  var: pop_black,               gamma:  0.015, temporal_res: yearly}
+    - {var_group: census,  var: median_age,              gamma:  0.020, temporal_res: yearly}
+
   poisson_params:
     base_rate: 0.11
     seasonal_amplitude: 0.02
