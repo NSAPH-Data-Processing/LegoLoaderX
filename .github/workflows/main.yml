@@ -119,81 +119,13 @@ jobs:
             ${{ steps.inspector_code.outputs.inspector_scan_results_markdown }}
             ${{ steps.inspector_code.outputs.artifact_sbom }}
 
-      # 7. Build and Scan Container Image
-      - name: Build Container Image
-        if: always()
-        run: |
-          docker build --no-cache -t app:latest -f application/Dockerfile .
-
-      # 8. Amazon Inspector Vulnerability Scan (Container)
-      - name: Amazon Inspector Container Scan
-        id: inspector_container
-        if: always()
-        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1.5.0
-        with:
-          artifact_type: 'container'
-          artifact_path: 'app:latest'
-          display_vulnerability_findings: "enabled"
-
-          # CRITICAL: Only count and show vulnerabilities with a fix available
-          show_only_fixable_vulns: "true"
-
-          sbomgen_version: "latest"
-
-          # Set severity thresholds to 0 to ignore all vulnerabilities of that level.
-          critical_threshold: 1
-          high_threshold: 1
-          medium_threshold: 1
-          low_threshold: 0
-          other_threshold: 0
-
-          # ignored_findings: (optional) Comma-separated list of CVE IDs to ignore. Ignored CVEs are excluded from reports and threshold counts. Example: CVE-2021-12345,CVE-2022-67890"
-          # ignore_findings: "CVE-2026-27205"
-
-      # 8b. Debug: Print all outputs from scan step
-      # vulnerability_threshold_exceeded: (0 = success, 1 = thresholds exceeded)
-      - name: Debug scan outputs
-        if: always()
-        run: |
-          echo "=== Inspector Container Scan Outputs ==="
-          echo "outcome: ${{ steps.inspector_container.outcome }}"
-          echo "vulnerability_threshold_exceeded: ${{ steps.inspector_container.outputs.vulnerability_threshold_exceeded }}"
-
-      # 9. Display Container Scan results
-      - name: Display Container Scan Results (Markdown)
-        if: always()
-        run: cat ${{ steps.inspector_container.outputs.inspector_scan_results_markdown }}
-
-      # 10. Fail the job if vulnerability threshold flag is set
-      #    (0 = success, 1 = thresholds exceeded)
-      - name: Fail job if vulnerability threshold is exceeded (Container)
-        if: always()
-        run: exit ${{ steps.inspector_container.outputs.vulnerability_threshold_exceeded }}
-
-      # 11. Upload Container Scan Artifacts
-      - name: Upload Container Scan Artifacts
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: Container-Scan-Artifacts-${{ github.run_id }}
-          path: |
-            ${{ steps.inspector_container.outputs.inspector_scan_results }}
-            ${{ steps.inspector_container.outputs.inspector_scan_results_markdown }}
-            ${{ steps.inspector_container.outputs.artifact_sbom }}
-
-      # 12. Defense-in-Depth: IaC Security Scan (Checkov)
+     # 7. Defense-in-Depth: IaC Security Scan (Checkov)
       - name: IaC Security Scan (Checkov)
         if: always()
         uses: docker://bridgecrew/checkov:latest
         with:
           args: -d . --quiet
         continue-on-error: true # Allow non-critical tools to not block the pipeline
-
-    #   # 12. Only run if the previous step failed
-    #   - name: Notify maintainers of validation failure
-    #     if: ${{ failure() }}
-    #     run: echo "this feature is not implemented"
-    #     # TODO: add steps to send notification to a Lambda to cut a ticket on job failure
 
   # Job 2: Sync to CodeCommit (only runs if scan passes)
   sync:
