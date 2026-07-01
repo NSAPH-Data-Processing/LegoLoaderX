@@ -45,6 +45,7 @@ import pandas as pd
 
 from src.synthetic_causal import expected_rate_grid, offset_vector, marginal_outcome
 from src.synthetic_denom import get_zcta_data_with_geo_pop
+from src.synthetic_manifest import apply_dgp_from_manifest, load_manifest
 
 LOGGER = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -55,6 +56,20 @@ def main(cfg):
     year = int(cfg.year)
     var = cfg.synthetic.var_name
     n_days = 366 if (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)) else 365
+
+    # The DGP parameters used as the ground truth come from the manifest written next to the data
+    # (so the "answer key" matches the data even if conf/synthetic/config.yaml has since changed).
+    # Disable with synthetic.erc.use_manifest=false to fall back to the live config.
+    erc_cfg0 = cfg.synthetic.get("erc", {}) or {}
+    if erc_cfg0.get("use_manifest", True):
+        manifest = load_manifest(var, year, path=erc_cfg0.get("manifest_path", None))
+        if manifest is not None:
+            cfg = apply_dgp_from_manifest(cfg, manifest)
+            LOGGER.info(f"Ground truth from manifest generated_at={manifest.get('generated_at_utc')} "
+                        f"git={manifest.get('git_commit')} (DGP params override live config)")
+        else:
+            LOGGER.warning("No manifest found beside the data; using LIVE config as ground truth "
+                           "(it may not match the data on disk). Run synthetic_health first.")
 
     # same zcta grid + offset the generator uses
     zcta_data = get_zcta_data_with_geo_pop(
@@ -72,6 +87,7 @@ def main(cfg):
     fc_len = int(erc_cfg.get("forecast_len", n_days - fc_start))
     forecast = slice(fc_start, fc_start + fc_len)
     node_agg = str(erc_cfg.get("node_aggregation", "mean"))
+    out_dir = str(erc_cfg.get("output_dir", "outputs"))   # set to lab storage to keep home clean
 
     # exposure grid: span the realistic exposure range (1st-99th pct), unless pinned in conf
     grid_cfg = erc_cfg.get("grid", None)
@@ -96,8 +112,8 @@ def main(cfg):
         for a in xs
     ])
 
-    os.makedirs("outputs", exist_ok=True)
-    csv_path = f"outputs/erc_ground_truth_{var}_{year}.csv"
+    os.makedirs(out_dir, exist_ok=True)
+    csv_path = os.path.join(out_dir, f"erc_ground_truth_{var}_{year}.csv")
     pd.DataFrame({"exposure": xs, "erc_true": mu}).to_csv(csv_path, index=False)
 
     meta = {
@@ -110,13 +126,19 @@ def main(cfg):
                   else "total windowed expected count summed over nodes"),
         "exposure_variable": f"{cfg.synthetic.exposure_var_group}/{cfg.synthetic.exposure_var}",
         "beta_true": float(cfg.synthetic.get("beta", 0.0)),
+        "exposure_shape": str(cfg.synthetic.get("exposure_shape", "linear")),
         "confounders": OmegaConf.to_container(cfg.synthetic.get("confounders", []) or [], resolve=True),
+        "interactions": bool(cfg.synthetic.get("interactions", False)),
+        "interaction_terms": OmegaConf.to_container(cfg.synthetic.get("interaction_terms", []) or [], resolve=True),
+        # spatial/temporal coupling applied to the rate (no-op when rho=phi=0). With normalize=false the
+        # exposure slope this curve represents is amplified by 1/((1-rho)*(1-phi)); see synthetic_spacetime.
+        "spacetime": OmegaConf.to_container(cfg.synthetic.get("spacetime", {}) or {}, resolve=True),
         "rate_floor": 0.01,
         "exposure_range": [float(xs[0]), float(xs[-1])],
         "n_exposure_points": int(len(xs)),
         "source": "src/synthetic_causal.expected_rate_grid (same rate the generator draws from)",
     }
-    meta_path = f"outputs/erc_ground_truth_{var}_{year}.meta.json"
+    meta_path = os.path.join(out_dir, f"erc_ground_truth_{var}_{year}.meta.json")
     with open(meta_path, "w") as f:
         json.dump(meta, f, indent=2)
 

@@ -4,12 +4,32 @@ Keeps the exposure/confounder machinery out of ``synthetic_health.py`` so that f
 almost like the original generator. The outcome's Poisson rate gains an additive ``extra``
 term built here:
 
-    extra = beta * exposure(raw)  +  sum_k gamma_k * standardized(confounder_k)
+    extra = beta * shape(exposure)
+            + sum_k gamma_k * shape_k(standardized(confounder_k))
+            + sum_j delta_j * prod(interacting terms_j)      # only when interactions enabled
 
 All values are read from the dense covariate store (``data/covars``) so the model later trains
-on exactly the numbers that generated the outcome. ``beta`` and the ``gamma_k`` are the ground
-truth used to validate the ERC / g-computation pipeline. With ``beta=0`` and no confounders
-``build_extra_rate`` returns ``None`` and the outcome reverts to the original exposure-free DGP.
+on exactly the numbers that generated the outcome. ``beta``, the ``gamma_k`` and the interaction
+``delta_j`` are the ground truth used to validate the ERC / g-computation pipeline. With
+``beta=0``, no confounders and no interactions, ``build_extra_rate`` returns ``None`` and the
+outcome reverts to the original exposure-free DGP.
+
+NON-LINEAR SHAPES (config-driven, evaluated here so the ground truth follows automatically)
+-------------------------------------------------------------------------------------------
+Each term may be passed through a fixed-form ``shape`` (see ``_apply_shape``):
+  * exposure ``synthetic.exposure_shape`` -- e.g. ``sqrt`` gives a concave PM2.5 dose-response,
+    matching the sub-linear exposure-response curves reported in the air-pollution literature.
+  * confounder ``shape`` (+ optional ``center``) -- e.g. ``u_shape`` makes temperature U-shaped
+    (risk rises at both cold and hot extremes, minimum near ``center`` in standardized units).
+The default shape is ``linear`` everywhere, which reproduces the original additive-linear DGP
+byte-for-byte.
+
+INTERACTIONS (``synthetic.interactions: true``)
+-----------------------------------------------
+When enabled, each entry of ``synthetic.interaction_terms`` adds ``delta * prod(refs)`` where a
+ref is ``"exposure"`` (the shaped exposure) or a confounder's ``var`` (its standardized value).
+This injects effect modification -- confounder x confounder (e.g. income x age) and
+confounder x treatment (e.g. PM2.5 x %over-65) -- into the known DGP.
 """
 
 import logging
@@ -24,6 +44,38 @@ LOGGER = logging.getLogger(__name__)
 # exposure and re-evaluates the rate many times) don't reload the same .npy / parquet every call.
 _RAW_COVAR_CACHE = {}   # (root, var_group, var, year, standardize) -> loaded (+standardized) array
 _IDX2ZCTA_CACHE = {}    # root -> list of zcta strings in store-column order
+
+
+def _apply_shape(x, shape=None, center=0.0):
+    """Pass a value through a fixed-form non-linearity. Works on scalars and arrays alike.
+
+    ``x`` is the raw exposure (for the exposure term) or the standardized confounder (for a
+    confounder term). Supported ``shape`` values:
+
+      * ``linear`` / ``identity`` (default): ``x``  -- the original additive-linear behaviour.
+      * ``sqrt``:   ``sqrt(max(x, 0))``     -- concave, saturating (sub-linear dose-response).
+      * ``log1p``:  ``log(1 + max(x, 0))``  -- concave, even more saturating.
+      * ``quadratic`` / ``u_shape``: ``(x - center)**2`` -- U-shaped about ``center`` (use a
+        POSITIVE coefficient so risk rises on both sides, e.g. cold AND hot temperature).
+      * ``abs`` / ``v_shape``: ``|x - center|`` -- V-shaped about ``center``.
+
+    ``center`` shifts the minimum of the U/V shapes. For a confounder it is in *standardized*
+    units (0 = the variable's mean); for the raw exposure it is in the exposure's own units.
+    """
+    shape = (shape or "linear").lower()
+    if shape in ("linear", "identity", "none"):
+        return x
+    if shape == "sqrt":
+        return np.sqrt(np.clip(x, 0.0, None))
+    if shape == "log1p":
+        return np.log1p(np.clip(x, 0.0, None))
+    if shape in ("quadratic", "square", "u_shape", "u-shape", "ushape"):
+        return (x - center) ** 2
+    if shape in ("abs", "v_shape", "v-shape"):
+        return np.abs(x - center)
+    raise ValueError(
+        f"unknown shape {shape!r}; supported: linear, sqrt, log1p, quadratic/u_shape, abs"
+    )
 
 
 def _load_raw_covar(root, var_group, var, year, standardize):
@@ -72,46 +124,94 @@ def _load_covar_aligned(root, var_group, var, year, zctas, n_days, temporal_res,
     return out
 
 
+def _shaped_exposure(cfg, zctas, n_days, cov_root, exposure_override):
+    """Return ``shape(exposure)`` — a scalar under ``do(exposure=x)``, else a ``(n_days, n_zctas)``
+    array of the real PM2.5 from disk. The shape (``synthetic.exposure_shape``) is applied here so
+    both the generator and the ground-truth ERC see the identical (possibly non-linear) form."""
+    shape = cfg.synthetic.get("exposure_shape", "linear")
+    if exposure_override is not None:
+        return _apply_shape(float(exposure_override), shape)          # do(exposure=x): same x everywhere
+    exp_vg, exp_var = cfg.synthetic.exposure_var_group, cfg.synthetic.exposure_var
+    raw = _load_covar_aligned(cov_root, exp_vg, exp_var, cfg.year, zctas, n_days,
+                              temporal_res="daily", standardize=False)
+    return _apply_shape(raw, shape)
+
+
+def _confounder_value(cfg, c, zctas, n_days, cov_root, shape):
+    """Standardized confounder ``c`` aligned to ``zctas``, optionally passed through ``shape``.
+
+    ``shape`` is decoupled from the entry's main-effect shape so interaction terms can reuse the
+    plain standardized value while the main effect uses, say, a U-shape.
+    """
+    std = _load_covar_aligned(cov_root, c.var_group, c.var, cfg.year, zctas, n_days,
+                              temporal_res=c.temporal_res, standardize=True)
+    return _apply_shape(std, shape, float(c.get("center", 0.0)))
+
+
 def build_extra_rate(cfg, zcta_data, exposure_override=None):
     """Build the additive causal rate term for one year, aligned to ``zcta_data`` row order.
-    Reads ``cfg.synthetic`` (``beta``, ``exposure_*``, ``confounders``) and ``cfg.year``.
-    Returns a ``(n_days, n_zctas)`` float32 array, or ``None`` when there are no causal terms
-    (``beta=0`` and no confounders) — in which case the outcome keeps its original behaviour.
+    Reads ``cfg.synthetic`` (``beta``, ``exposure_*``, ``exposure_shape``, ``confounders``,
+    ``interactions``/``interaction_terms``) and ``cfg.year``. Returns a ``(n_days, n_zctas)``
+    float32 array, or ``None`` when there are no causal terms (``beta=0``, no confounders, no
+    interactions) — in which case the outcome keeps its original behaviour.
 
-    ``exposure_override``: if given a scalar ``x``, the exposure term uses ``beta * x`` in EVERY
-    cell instead of the real PM2.5 loaded from disk — i.e. the ``do(exposure = x)`` intervention.
-    Confounders are always read from disk unchanged. This is what lets the ground-truth ERC be
-    computed straight from the DGP (see ``expected_rate_grid``).
+    ``exposure_override``: if given a scalar ``x``, the exposure term uses ``beta * shape(x)`` in
+    EVERY cell instead of the real PM2.5 loaded from disk — i.e. the ``do(exposure = x)``
+    intervention. Confounders are always read from disk unchanged. This is what lets the
+    ground-truth ERC be computed straight from the DGP (see ``expected_rate_grid``).
     """
     import calendar
 
     n_days = 366 if calendar.isleap(int(cfg.year)) else 365
     zctas = zcta_data["zcta"]
     cov_root = cfg.synthetic.get("exposure_covars_root", "data/covars")
+    quiet = exposure_override is not None        # ERC sweeps call this many times; log only the real build
     extra = np.zeros((n_days, len(zctas)), dtype=np.float32)
 
+    # --- exposure term: beta * shape(exposure) ---
     beta = float(cfg.synthetic.get("beta", 0.0))
+    shaped_exposure = None
     if beta:
-        if exposure_override is not None:
-            extra += beta * float(exposure_override)      # do(exposure = x): same x in every cell
-        else:
+        shaped_exposure = _shaped_exposure(cfg, zctas, n_days, cov_root, exposure_override)
+        if not quiet:
             exp_vg, exp_var = cfg.synthetic.exposure_var_group, cfg.synthetic.exposure_var
-            LOGGER.info(f"Exposure term: {beta} * {exp_vg}/{exp_var} (raw)")
-            extra += beta * _load_covar_aligned(
-                cov_root, exp_vg, exp_var, cfg.year, zctas, n_days,
-                temporal_res="daily", standardize=False,
-            )
+            LOGGER.info(f"Exposure term: {beta} * {cfg.synthetic.get('exposure_shape', 'linear')}({exp_vg}/{exp_var})")
+        extra += beta * shaped_exposure
 
+    # --- confounder terms: sum_k gamma_k * shape_k(standardized(C_k)) ---
     confounders = cfg.synthetic.get("confounders", None) or []
     for c in confounders:
-        if exposure_override is None:
-            LOGGER.info(f"Confounder term: {c.gamma} * standardized({c.var_group}/{c.var}) [{c.temporal_res}]")
-        extra += float(c.gamma) * _load_covar_aligned(
-            cov_root, c.var_group, c.var, cfg.year, zctas, n_days,
-            temporal_res=c.temporal_res, standardize=True,
-        )
+        shape = c.get("shape", "linear")
+        if not quiet:
+            LOGGER.info(f"Confounder term: {c.gamma} * {shape}(standardized({c.var_group}/{c.var})) [{c.temporal_res}]")
+        extra += float(c.gamma) * _confounder_value(cfg, c, zctas, n_days, cov_root, shape)
 
-    return extra if (beta or confounders) else None
+    # --- interaction terms (effect modification): sum_j delta_j * prod(refs_j) ---
+    n_interactions = 0
+    if cfg.synthetic.get("interactions", False):
+        conf_by_var = {c.var: c for c in confounders}
+        for term in (cfg.synthetic.get("interaction_terms", None) or []):
+            refs = list(term.get("vars", []))
+            prod = float(term.gamma)
+            for name in refs:
+                if name == "exposure":
+                    if shaped_exposure is None:   # interaction needs the exposure but beta==0
+                        shaped_exposure = _shaped_exposure(cfg, zctas, n_days, cov_root, exposure_override)
+                    prod = prod * shaped_exposure
+                else:
+                    c = conf_by_var.get(name)
+                    if c is None:
+                        raise ValueError(
+                            f"interaction term references {name!r}, which is neither 'exposure' nor a "
+                            f"confounder var; known confounders: {sorted(conf_by_var)}"
+                        )
+                    prod = prod * _confounder_value(cfg, c, zctas, n_days, cov_root, shape="linear")
+            if not quiet:
+                LOGGER.info(f"Interaction term: {term.gamma} * prod({refs})")
+            extra += prod
+            n_interactions += 1
+
+    return extra if (beta or confounders or n_interactions) else None
 
 
 def offset_vector(cfg, zcta_data):
@@ -127,7 +227,8 @@ def offset_vector(cfg, zcta_data):
 def expected_rate_grid(cfg, zcta_data, exposure_override=None):
     """The DGP's per-cell Poisson RATE ``lambda`` as a ``(n_days, n_zctas)`` array.
 
-        lambda = max(0.01, base + seasonal + lat + lon + beta*exposure + sum_k gamma_k*std(C_k))
+        lambda = max(0.01, base + seasonal + lat + lon
+                           + beta*shape(exposure) + sum_k gamma_k*shape_k(std(C_k)) + interactions)
 
     This is the SINGLE definition of the data-generating mean used for *evaluation*: the
     ground-truth ERC (``ground_truth_erc.py``) is just this averaged over cells while sweeping the
@@ -136,6 +237,17 @@ def expected_rate_grid(cfg, zcta_data, exposure_override=None):
 
     ``exposure_override=x`` fixes the exposure to ``x`` in every cell (the ``do(exposure=x)``
     intervention used to trace the ERC); otherwise the real PM2.5 from the store is used.
+
+    SPATIAL + TEMPORAL COUPLING (``cfg.synthetic.spacetime``)
+    --------------------------------------------------------
+    After the additive rate is built, an optional spatial (SAR) + temporal (AR(1)/EWMA) coupling is
+    applied to the PRE-floor rate (see ``src/synthetic_spacetime.py``): each ZCTA's rate is blended
+    with its neighbours' rates and its own recent past, with a geometrically decaying weight. The
+    coupling is linear and deterministic, so this function still returns the EXACT ground-truth rate
+    under ``do(exposure=x)`` -- no Monte Carlo. With ``normalize=True`` (default) the operators are
+    mean-preserving, so the marginal exposure slope is unchanged and the rate stays as low as the
+    uncoupled DGP; with ``normalize=False`` the slope is amplified by ``1/((1-rho)(1-phi))``. The
+    block is a no-op (byte-identical output) when absent or when ``rho == phi == 0``.
     """
     import calendar
 
@@ -153,6 +265,17 @@ def expected_rate_grid(cfg, zcta_data, exposure_override=None):
     extra = build_extra_rate(cfg, zcta_data, exposure_override=exposure_override)
     if extra is not None:
         rate = rate + extra
+
+    # spatial (neighbours) + temporal (own past) coupling of the PRE-floor rate; no-op when rho=phi=0.
+    st = cfg.synthetic.get("spacetime", None) or {}
+    rho = float(st.get("rho", 0.0) or 0.0)
+    phi = float(st.get("phi", 0.0) or 0.0)
+    if rho or phi:
+        from src.synthetic_spacetime import apply_spacetime_coupling, get_W
+        W = get_W(zcta_data, method=st.get("method", "knn"), k=int(st.get("k", 8)),
+                  length_scale_km=st.get("length_scale_km", None)) if rho else None
+        rate = apply_spacetime_coupling(rate, W, rho=rho, phi=phi,
+                                        normalize=bool(st.get("normalize", True)))
 
     return np.maximum(0.01, rate)
 

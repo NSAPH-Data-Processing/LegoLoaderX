@@ -8,8 +8,9 @@ import geopandas as gpd
 import hydra
 import numpy as np
 import pandas as pd
-from src.synthetic_causal import build_extra_rate
+from src.synthetic_causal import expected_rate_grid, offset_vector
 from src.synthetic_denom import get_zcta_data_with_geo_pop
+from src.synthetic_manifest import counts_path, write_manifest
 
 # Configure logging
 LOGGER = logging.getLogger(__name__)
@@ -18,72 +19,53 @@ logging.basicConfig(
 )
 
 
-def generate_synthetic_data(zcta_data, date_list, var_name, disease_params, extra_rate=None):
-    """
-    Generate synthetic health data for ALL dates and ZCTAs at once using vectorized operations
-    Much faster than generating one date at a time
+def generate_synthetic_data(zcta_data, date_list, var_name, rate_grid, offset):
+    """Poisson-sample synthetic counts from a PRECOMPUTED floored rate grid, in one vectorized draw.
 
-    If ``extra_rate`` (a ``(n_days, n_zctas)`` array aligned to ``zcta_data`` row order) is
-    given, it is added to the Poisson rate each day. It carries the known causal terms —
-    ``beta * exposure`` plus ``sum_k gamma_k * confounder_k`` — so the outcome has a known
-    same-day dose-response to a real exposure and depends on real confounders (for ERC /
-    g-computation validation). ``extra_rate=None`` reproduces the original exposure-free
-    behaviour.
+    ``rate_grid``: ``(n_days, n_zctas)`` floored Poisson RATE aligned to ``zcta_data`` row order, as
+    returned by :func:`src.synthetic_causal.expected_rate_grid` -- which already includes the
+    background + seasonal + geography + causal (beta*exposure + sum_k gamma_k*confounder_k) terms AND
+    the optional spatial/temporal coupling. ``offset``: ``(n_zctas,)`` per-ZCTA Poisson offset
+    (``offset_vector``). We sample the WHOLE grid in a single ``np.random.poisson`` call (verified
+    byte-identical to the old per-day loop, which drew the same stream in the same C-order) and then
+    melt to the long sparse ``(zcta, var, date, n)`` format, dropping zeros.
+
+    This deliberately no longer rebuilds the rate day-by-day: that duplicated ``expected_rate_grid``
+    and risked silently drifting from it / from the ground-truth ERC. There is now ONE definition of
+    the DGP rate. ``date_list`` may be shorter than ``rate_grid`` (debug mode): only its first
+    ``len(date_list)`` days are sampled -- the temporal coupling is causal, so those leading days are
+    already correct.
     """
+    n_days = len(date_list)
+    if n_days > rate_grid.shape[0]:
+        raise ValueError(f"date_list has {n_days} days but rate_grid only has {rate_grid.shape[0]}")
+    rate_grid = rate_grid[:n_days]
     LOGGER.info(
-        f"Generating synthetic data for {var_name}: {len(date_list)} dates and {len(zcta_data)} ZCTAs"
+        f"Generating synthetic data for {var_name}: {n_days} dates and {rate_grid.shape[1]} ZCTAs"
     )
 
-    # Geographic effects (arbitrary variation functions)
-    lat_normalized = (zcta_data["latitude"] - 35) / 15
-    lon_normalized = (zcta_data["longitude"] + 95) / 30
-    lat_effect = disease_params.latitude_effect * np.sin(lat_normalized * np.pi)
-    lon_effect = disease_params.longitude_effect * np.cos(lon_normalized * np.pi)
+    # Expected count per (day, zcta) = rate * offset; one vectorized Poisson draw over the whole grid.
+    counts = np.random.poisson(rate_grid * offset[None, :])
 
-    # Create all data at once
+    zctas = zcta_data["zcta"].to_numpy()
     all_synthetic_data = []
-
     for day_of_year, target_date in enumerate(date_list):
-        # Calculate seasonal effect for this date
-        seasonal_effect = disease_params.seasonal_amplitude * np.sin(
-            2 * np.pi * day_of_year / 365.25
-        )
-
-        # Calculate lambda parameters for all ZCTAs at once
-        rate = disease_params.base_rate + seasonal_effect + lat_effect + lon_effect
-        if extra_rate is not None:
-            # semi-synthetic causal terms: beta*exposure + sum_k gamma_k*confounder_k
-            rate = rate + extra_rate[day_of_year]
-        lambda_params = np.maximum(0.01, rate)
-
-        # Generate all counts at once using vectorized Poisson
-        offset = disease_params.population_normalizer * zcta_data["population"]
-        counts = np.random.poisson(lambda_params * offset)
-
-        # Create records for this date - use date object for compatibility with health script
+        day_counts = counts[day_of_year]
+        nz = day_counts > 0                              # keep only non-zero records (sparse format)
         date_obj = date(target_date[0], target_date[1], target_date[2])
-        date_data = {
-            "zcta": zcta_data["zcta"].values,
+        all_synthetic_data.append(pd.DataFrame({
+            "zcta": zctas[nz],
             "var": var_name,
             "date": date_obj,
-            "n": counts,
-        }
-        df = pd.DataFrame(date_data)
-
-        # Remove zeros
-        df = df[df["n"] > 0]
-
-        all_synthetic_data.append(df)
-
+            "n": day_counts[nz],
+        }))
 
     # Log sparsity level
     concat_df = pd.concat(all_synthetic_data, ignore_index=True)
-    total_possible = len(zcta_data) * len(date_list)
-    total_records = sum(len(df) for df in all_synthetic_data)
-    sparsity = 100 * (1 - total_records / total_possible)
+    total_possible = rate_grid.shape[1] * n_days
+    sparsity = 100 * (1 - len(concat_df) / total_possible)
     LOGGER.info(f"  > Generated {len(concat_df):,} records implying sparsity of {sparsity:.2f}%")
 
-    # Concatenate all data
     return concat_df
 
 
@@ -113,9 +95,11 @@ def main(cfg):
 
     LOGGER.info(f"Found {len(zcta_data)} ZCTAs for year {cfg.year} with complete data")
 
-    # Known causal terms (beta*exposure + sum_k gamma_k*confounder_k) the outcome depends on.
-    # Built in src/synthetic_causal.py; returns None when disabled -> original behaviour.
-    extra_rate = build_extra_rate(cfg, zcta_data)
+    # The full (n_days, n_zctas) floored Poisson RATE: background + seasonal + geography + causal
+    # terms (beta*exposure + sum_k gamma_k*confounder_k) + optional spatial/temporal coupling. This
+    # is the SAME function the ground-truth ERC uses, so the generator can no longer drift from it.
+    rate_grid = expected_rate_grid(cfg, zcta_data)
+    offset = offset_vector(cfg, zcta_data)
 
     # get days list for a given year with calendar days
     days_list = [
@@ -132,21 +116,21 @@ def main(cfg):
     # Generate synthetic data for ALL diseases
     LOGGER.info("Generating synthetic data for all diseases...")
 
-    # Get disease-specific parameters
-    disease_params = cfg.synthetic.poisson_params
-
-    # Generate synthetic data for this disease
+    # Poisson-sample counts from the precomputed rate grid (one vectorized draw)
     disease_df = generate_synthetic_data(
-        zcta_data, days_list, cfg.synthetic.var_name, disease_params,
-        extra_rate=extra_rate,
+        zcta_data, days_list, cfg.synthetic.var_name, rate_grid, offset,
     )
 
-    # Save synthetic data as input files for the real health processing script
+    # Save synthetic data as input files for the real health processing script.
     # Path matches the snakemake config: data/input/{counts_lego_path}/sparse_counts_{var}_{year}.parquet
-    synthetic_input_file = f"data/input/lego/medicare_synthetic/medpar_outcomes/ccw/zcta_daily/sparse_counts_{cfg.synthetic.var_name}_{cfg.year}.parquet"
+    synthetic_input_file = counts_path(cfg.synthetic.var_name, cfg.year)
     LOGGER.info(f"Saving synthetic input data to {synthetic_input_file}")
     os.makedirs(os.path.dirname(synthetic_input_file), exist_ok=True)
     disease_df.to_parquet(synthetic_input_file, index=False)
+
+    # Persist the exact DGP parameters as a manifest beside the data, so the ground truth for this
+    # dataset is read back from here (not from a config that may later change). See synthetic_manifest.
+    write_manifest(cfg)
 
     LOGGER.info(f"Synthetic data generation completed for year {cfg.year}")
 

@@ -1,44 +1,62 @@
 #!/bin/bash
 #
-#SBATCH -J synth_5x5            # job name
+#SBATCH -J synth_data           # job name
 #SBATCH -p shared               # partition (queue)
 #SBATCH -c 8                    # cores
 #SBATCH --mem 32GB              # memory
 #SBATCH -t 02:00:00             # walltime (HH:MM:SS)
 #SBATCH -o logs/slurm/%j.out
 #SBATCH -e logs/slurm/%j.err
-
-# Generate semi-synthetic outcome data whose rate depends on 5 environmental EXPOSURES
-# (pm25_ushap/PM25 [ERC target], aqdh/no2, aqdh/o3, gridmet/tmmx, gridmet/rmax) and 5 census
-# CONFOUNDERS (median_household_income, pop_poverty, pop_over_65_years, pop_black, median_age),
-# all with known coefficients set in conf/synthetic/config.yaml. For each year it writes:
-#   - the denominator parquet      (synthetic_denom.py)
-#   - the disease sparse-counts parquet (synthetic_health.py, using the 5+5 rate terms)
-# then computes the ground-truth ERC for one year.
 #
-# Submit from the repo root:   sbatch jobs/generate_5x5.sbatch
+# =============================================================================
+# Generate the semi-synthetic outcome data for the ERC validation pipeline.
+#
+# WHAT IT PRODUCES, per year (both REQUIRED for usable health data, since a
+# health rate = counts / denominator):
+#   1. denominator parquet   <- synthetic_denom.py   (population at risk per ZCTA)
+#   2. disease counts parquet <- synthetic_health.py  (outcome; the Poisson rate is
+#        base + season + geo + beta*PM2.5 + sum_k gamma_k*confounder_k, with the
+#        coefficients set in conf/synthetic/config.yaml)
+#
+# WHICH PARTS DO YOU NEED?
+#   * Minimum: ONE year of the disease you care about  -> set YEARS to a single year.
+#   * More train/eval data: list more years (all configured covariates exist 2000-2016).
+#   * Ground-truth ERC ("answer key"): only needed when you want to SCORE a model.
+#     Toggle it with RUN_GROUND_TRUTH below; skip it if you just want the data.
+#
+# Submit from the repo root:  sbatch jobs/generate_5x5.sbatch
+# =============================================================================
 
 set -euo pipefail
 
-ENV_NAME="healthx"
-VAR="diabetes"                  # disease to generate
-YEARS="2010 2011 2012 2013 2014"   # all 10 covariates are present for these years
-CHECK_YEAR="2012"               # year to validate + plot the ERC for
+# ---------- configuration (edit these) ----------
+ENV_NAME="healthx"                  # conda env to use (the repo's environment.yaml builds 'legoloaderx')
+VAR="diabetes"                      # which disease/outcome to generate
+YEARS="2010 2011"                   # years to generate (configured covariates exist 2000-2016)
+RUN_GROUND_TRUTH=true               # also compute the ground-truth ERC?  true | false
+GT_YEAR="2010"                      # year to compute the ground-truth ERC for (if enabled)
+ERC_OUT="/n/dominici_lab/lab/lego_loader_x/jkleutgens/erc_outputs"  # ERC output dir (lab storage, not home)
+# ------------------------------------------------
 
 source ~/.bashrc
 conda activate "${ENV_NAME}"
 export PYTHONPATH="."
 mkdir -p logs/slurm
 
-echo "=== generating ${VAR} for years: ${YEARS} ==="
+# ---------- generate the data (denominator + outcome counts) ----------
 for y in ${YEARS}; do
-    echo "--- year ${y}: denominator ---"
+    echo "=== year ${y}: denominator (population at risk) ==="
     python -m src.synthetic_denom  year="${y}"
-    echo "--- year ${y}: outcome counts (5 exposures + 5 confounders) ---"
+
+    echo "=== year ${y}: outcome counts for ${VAR} (causal rate from config) ==="
     python -m src.synthetic_health year="${y}" synthetic.var_name="${VAR}"
 done
 
-echo "=== ground-truth ERC for ${CHECK_YEAR} -> outputs/erc_ground_truth_${VAR}_${CHECK_YEAR}.csv ==="
-python -m src.ground_truth_erc year="${CHECK_YEAR}" synthetic.var_name="${VAR}"
+# ---------- optional: the ground-truth ERC (answer key for model validation) ----------
+if [ "${RUN_GROUND_TRUTH}" = true ]; then
+    echo "=== ground-truth ERC for ${VAR} ${GT_YEAR} -> ${ERC_OUT}/erc_ground_truth_${VAR}_${GT_YEAR}.csv ==="
+    python -m src.ground_truth_erc year="${GT_YEAR}" synthetic.var_name="${VAR}" \
+        synthetic.erc.output_dir="${ERC_OUT}"
+fi
 
-echo "=== done. raw synthetic inputs are under data/input/lego/medicare_synthetic/ ==="
+echo "=== done. synthetic inputs are under data/input/lego/medicare_synthetic/ ==="
