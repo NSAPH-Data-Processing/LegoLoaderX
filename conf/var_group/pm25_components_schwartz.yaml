@@ -17,9 +17,9 @@ descriptions:
   v: Vanadium concentration (μg/m³)
   zn: Zinc concentration (μg/m³)
 min_year: 2000
-max_year: 2023
+max_year: 2019
 valid_normalize: true
 min_spatial_res: zcta
 min_temporal_res: yearly
-lego_nm: pm25_components__schwartz__V5NA_zcta_yearly
-lego_dir: lego/environmental/pm25_components__schwartz/V6NA/zcta_yearly/
+lego_nm: pm25_components__schwartz__zcta_yearly
+lego_dir: lego/environmental/pm25_components__schwartz/zcta_yearly/

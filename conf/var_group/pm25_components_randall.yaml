@@ -13,5 +13,6 @@ max_year: 2023
 valid_normalize: true
 min_spatial_res: zcta
 min_temporal_res: monthly
-lego_nm: pm25_components__randall__V5NA_zcta_monthly
+lego_nm: pm25_components__randall__V6NA_zcta_monthly
 lego_dir: lego/environmental/pm25_components__randall/V6NA/zcta_monthly/
+lego_year_sep: "_"

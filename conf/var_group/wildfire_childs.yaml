@@ -7,5 +7,6 @@ max_year: 2020
 valid_normalize: true
 min_spatial_res: zcta
 min_temporal_res: daily
+date_col: day # date column name is `day` in the source CSVs, not `date` like the other var_groups
 lego_nm: wildfire__childs__zcta_daily
 lego_dir: lego/environmental/wildfire__childs/zcta_daily/
