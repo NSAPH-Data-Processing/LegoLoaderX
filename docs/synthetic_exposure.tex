@@ -1,0 +1,111 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\newcommand{\code}[1]{\texttt{\small #1}}
+
+\title{Semi-synthetic exposures with known confounder dependence\\
+\large for exposure-response-curve (ERC) validation in LegoLoaderX}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Motivation}
+The semi-synthetic outcome already carries a known dose-response ($\beta$) and known confounder
+coefficients ($\gamma_k$). Until now the \emph{exposures} were the real PM$_{2.5}$/gridmet fields read
+from disk, so the confounder$\to$treatment arm of the confounding was uncontrolled and unknown. We now
+\emph{generate} all five environmental exposures as treatment-assignment models with a
+\textbf{known, strong} dependence on the confounders, so that a naive exposure--outcome fit is
+provably biased and only a correct adjustment recovers $\beta$.
+
+\section{Exposure generative model}
+For each exposure $e\in\{\text{PM}_{2.5},\text{tmmx},\text{rmax},\text{pr},\text{vs}\}$, ZCTA $i$ and
+day $t$,
+\[
+  T_e[t,i] \;=\; m_e \;+\; s_e\, x_e[t,i], \qquad
+  x_e \;=\; \sqrt{f^{\mathrm{dr}}_e}\,z^{\mathrm{dr}}_e
+          \;+\; \sqrt{f^{\mathrm{st}}_e}\,z^{\mathrm{st}}_e
+          \;+\; \sqrt{1-f^{\mathrm{dr}}_e-f^{\mathrm{st}}_e}\,z^{\mathrm{no}}_e,
+\]
+a mix of three independent, unit-variance components (each $z(\cdot)=$ standardize to mean $0$, sd $1$):
+\begin{itemize}\itemsep2pt
+  \item \textbf{Confounder signal} $z^{\mathrm{dr}}_e = z\!\big(\sum_k w_{e,k}\,\tilde C_k\big)$, where
+        $\tilde C_k$ is the standardized confounder $k$ (the 12 real census/climate variables). This is
+        $f_e(X)$.
+  \item \textbf{Spatial + temporal structure} $z^{\mathrm{st}}_e = z\!\big(\mathcal S_{\rho_e,\phi_e}(\varepsilon)\big)$,
+        $\varepsilon\sim\mathcal N(0,I)$ white noise passed through the SAR($\rho$)+AR(1)($\phi$) operator
+        (Sec.~\ref{sec:st}).
+  \item \textbf{Independent noise} $z^{\mathrm{no}}_e = z(\eta)$, $\eta\sim\mathcal N(0,I)$ i.i.d.
+\end{itemize}
+Because $z^{\mathrm{st}}_e,z^{\mathrm{no}}_e$ are independent of $X$, an OLS of $T_e$ on the confounders
+has $R^2\approx f^{\mathrm{dr}}_e$ \emph{by construction}. We keep $f^{\mathrm{no}}_e=1-f^{\mathrm{dr}}_e-f^{\mathrm{st}}_e>0$
+so the exposure still varies \emph{conditional} on the confounders (positivity/overlap). Defaults:
+$f^{\mathrm{dr}}=0.6,\ f^{\mathrm{st}}=0.2,\ \rho=0.5\text{--}0.7,\ \phi=0.6\text{--}0.95$. PM$_{2.5}$ uses
+$m=10,\,s=5$, clipped $\ge 0$ (a realistic concentration, so $\beta$ stays calibrated); the four gridmet
+exposures use $m=0,\,s=1$ (they enter the outcome \emph{standardized}, so their scale is immaterial).
+Each exposure gets a distinct weight vector $w_{e,\cdot}$ and an independent RNG seed
+($\text{base}+1000e+\text{year}$) so the five treatments are not mutually collinear.
+
+\section{Spatial + temporal operator}\label{sec:st}
+With $W$ a row-normalized $k$-nearest-neighbour matrix over ZCTA centroids ($k{=}8$), applied to the
+white-noise field $\varepsilon_t$ (length $V$ per day):
+\[
+  \text{spatial (SAR):}\quad \tilde\varepsilon_t=(1-\rho)(I-\rho W)^{-1}\varepsilon_t,\qquad
+  \text{temporal (AR1):}\quad \lambda_t=(1-\phi)\tilde\varepsilon_t+\phi\,\lambda_{t-1}.
+\]
+This is the identical, previously-verified operator used for the outcome rate
+(\code{src/synthetic\_spacetime.py}); it induces spatial autocorrelation (neighbour corr $\approx 0.55$)
+and temporal persistence (lag-1 autocorr $\approx 0.42$; half-life $\ln 0.5/\ln\phi$ days).
+
+\section{Outcome DGP (unchanged form; now reads the synthetic exposures)}
+\[
+  Y[t,i]\sim\text{Poisson}\!\big(\lambda[t,i]\cdot\kappa\,\text{pop}_i\big),\quad
+  \lambda=\max\!\Big(\text{floor},\ \underbrace{\text{base}+\text{seasonal}+\text{geo}}_{\text{background}}
+   +\beta\,T_{\text{PM}_{2.5}}+\textstyle\sum_k\gamma_k\tilde C_k\Big),
+\]
+with $\beta=0.01$ the ground-truth dose-response. The four synthetic gridmet exposures enter as
+$\gamma_k\tilde C_k$ confounder terms; the 12 census/climate confounders remain real.
+
+\section{Confounding is real and recoverable (verified, year 2011)}
+The confounders drive \emph{both} the exposure and the outcome, so the naive marginal slope is biased
+while adjustment recovers the truth:
+\begin{center}\small
+\begin{tabular}{lc}
+\toprule
+Quantity & Value \\
+\midrule
+Ground-truth $\beta$ & $0.0100$ \\
+Naive slope (rate $\sim$ PM$_{2.5}$ only) & $0.0238$ \ (bias $+138\%$) \\
+Adjusted slope (rate $\sim$ PM$_{2.5}$ + 16 confounders) & $0.0100$ \ (recovers $\beta$) \\
+corr(PM$_{2.5}$, confounder signal) & $+0.75$ \\
+Achieved $R^2(T_e\sim X)$, all 5 exposures, all years & $0.595\text{--}0.601$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The ground-truth ERC is invariant to the assignment mechanism: $\mathrm{do}(T_{\text{PM}_{2.5}}=a)$
+overrides the exposure term and reads confounders from disk, so
+\code{src/ground\_truth\_erc.py} yields the exact closed-form curve regardless of how the exposures were
+generated.
+
+\section{Pipeline and storage}
+Three stages, run in order (SLURM scripts under \code{jobs/}):
+\begin{enumerate}\itemsep1pt
+  \item \textbf{Stage 0 -- exposures.} \code{src/synthetic\_exposure.py}
+        $\to$ \code{data/covars/synth\_exposure/<var>/<var>\_\_<year>.npy}
+        (dense covar format, float32, \code{idx2zcta} order). \code{jobs/generate\_exposures.sbatch}.
+  \item \textbf{Stage 1 -- outcomes.} \code{src/synthetic\_health.py} Poisson-samples counts from the
+        rate above (reads the synthetic exposures). \code{jobs/regenerate\_outcomes.sbatch}.
+  \item \textbf{Stage 2 -- format.} \code{snakefile\_health.smk} builds the dense per-$(var,year)$
+        \code{.npy} outcome/denominator store the dataloader reads. \code{jobs/format\_health.sbatch}.
+\end{enumerate}
+Generation parameters live in \code{conf/synthetic/config.yaml} $\to$
+\code{synthetic.exposure\_generation} and are snapshotted into each dataset's manifest for provenance.
+All outputs are written to a personal overlay
+(\code{data/covars}, \code{data/health} $\to$ \code{/n/dominici\_lab/lab/projects/julian/lego/}),
+leaving the shared lab store untouched. Reproducible: fixed seeds give byte-identical files.
+
+\end{document}

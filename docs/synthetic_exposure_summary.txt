@@ -1,0 +1,215 @@
+================================================================================
+SEMI-SYNTHETIC CAUSAL BENCHMARK: GENERATED EXPOSURES + KNOWN-TRUTH OUTCOME
+LegoLoaderX / branch semi-synthetic-causal-exposure          (checked 2026-07-21)
+================================================================================
+
+--------------------------------------------------------------------------------
+1. WHAT AND WHY
+--------------------------------------------------------------------------------
+We need to score an exposure-response-curve (ERC) estimator, which requires a
+dose-response we already know. On real data no such answer key exists.
+
+So we write the outcome ourselves: the daily hospitalisation count of each ZCTA
+is drawn from a Poisson rate that WE specify, with a known dose-response beta.
+
+Previously only the OUTCOME was synthetic; the exposures were the real PM2.5 /
+gridmet fields. That left the confounder -> treatment arm uncontrolled: we knew
+how much the exposure moves the outcome, but not how much the confounders move
+the exposure. Now BOTH arms are ours: the 5 environmental exposures are also
+generated, as an explicit treatment-assignment model with a known, strong
+dependence on the (real) confounders.
+
+Result: a naive exposure-outcome fit is provably biased (+100-150%, measured),
+and only a correctly adjusted estimator recovers beta. That is the test.
+
+--------------------------------------------------------------------------------
+2. THE TWO EQUATIONS
+--------------------------------------------------------------------------------
+(A) TREATMENT ASSIGNMENT - how each exposure e is generated (src/synthetic_exposure.py)
+
+    T_e[t,i] = mean_e + sd_e * x_e[t,i]
+
+    x_e = sqrt(f_dr) * z(sum_k w_ek * C~_k)     <- confounder signal   f_dr = 0.60
+        + sqrt(f_st) * z(SAR_rho AR1_phi noise) <- space/time structure f_st = 0.20
+        + sqrt(f_no) * z(iid noise)             <- independent noise    f_no = 0.20
+
+    z(.) = standardize to mean 0, sd 1.  C~_k = standardized confounder k.
+    The three parts are independent, so OLS(T_e ~ all confounders) has
+    R^2 = f_dr = 0.60 BY CONSTRUCTION (measured 0.59-0.60, table 5).
+    f_no > 0 is deliberate: it guarantees overlap/positivity, i.e. the exposure
+    still varies at fixed confounder values, so do(T = a) is not extrapolation.
+
+(B) OUTCOME - how the count is generated (src/synthetic_causal.py, unchanged form)
+
+    lambda[t,i] = max( 0.01,  base + seasonal(t) + geo(lat,lon)
+                             + beta * PM25[t,i]
+                             + sum_k gamma_k * C~_k[t,i] )
+
+    Y[t,i] ~ Poisson( lambda[t,i] * o_i ),   o_i = 0.0003 * population_i
+
+    beta = 0.01 is the ground truth. PM2.5 enters RAW (so beta is per ug/m^3);
+    everything else enters STANDARDIZED (so gamma is per standard deviation).
+
+--------------------------------------------------------------------------------
+3. THE 5 EXPOSURES (all generated)   conf/synthetic/config.yaml -> exposure_generation
+--------------------------------------------------------------------------------
+ var    role in outcome         mean   sd    f_dr  f_st  rho   phi   half-life
+ -----  ----------------------  -----  ----  ----  ----  ----  ----  ---------
+ PM25   beta = 0.0100  (TARGET)  10.0   5.0   0.6   0.2   0.7   0.90    6.6 d
+ tmmx   gamma = +0.015            0.0   1.0   0.6   0.2   0.7   0.95   13.5 d
+ rmax   gamma = +0.010            0.0   1.0   0.6   0.2   0.6   0.90    6.6 d
+ pr     gamma = -0.008            0.0   1.0   0.6   0.2   0.5   0.70    1.9 d
+ vs     gamma = -0.008            0.0   1.0   0.6   0.2   0.5   0.60    1.4 d
+
+ PM2.5 is the ERC target and the only term entering raw; it is clipped at >= 0
+ (a concentration), which pins 1.4% of cells at exactly 0. The other four are
+ standardized inside the outcome, so their mean/sd are cosmetic.
+ rho = spatial neighbour weight (k = 8 nearest ZCTA centroids, row-normalized).
+ phi = temporal memory; half-life = ln(0.5)/ln(phi) days.
+ Seed per exposure = 12345 + 1000*index + year, so the 5 are not collinear.
+
+--------------------------------------------------------------------------------
+4. THE 12 CONFOUNDERS (all REAL data) - who drives what
+--------------------------------------------------------------------------------
+ "-> Y" is gamma, the effect on the outcome rate (per SD).
+ "-> T" columns are the weights w_ek in the exposure model. Blank = no arrow.
+
+ confounder (source)                    -> Y     PM25  tmmx  rmax   pr    vs
+ -------------------------------------  ------  ----- ----- ----- ----- -----
+ median_household_income   (census)     -0.020   -0.8         -0.2
+ pop_poverty               (census)     +0.030   +1.0                    -0.2
+ median_home_value         (census)     -0.010   -0.5               +0.2
+ pop_higher_education      (census)     -0.015   -0.6
+ pop_over_65_years         (census)     +0.030   +0.3  +0.3               +0.2
+ pop_under_20_years        (census)     -0.010         +0.2
+ pop_black                 (census)     +0.015   +0.6
+ pop_hispanic              (census)     +0.010   +0.5
+ pop_non_us_citizen        (census)     +0.008     -     -     -     -     -
+ housing_renter_occupied   (census)     +0.010   +0.5
+ pct_cfa  humid subtropical (climate)   +0.010         +1.0  +1.0  +0.6
+ pct_dfa  humid continental (climate)   +0.008         -0.8  +0.3  +0.8  +0.5
+
+ READ THIS ROW-WISE. A variable is a confounder OF THE PM2.5 EFFECT only if it
+ has BOTH a "-> Y" entry and a "PM25" entry. That is 8 of the 12:
+   income, poverty, home value, education, over-65, black, hispanic, renters.
+ The other 4 are deliberately NOT confounders of PM2.5:
+   - pop_non_us_citizen: affects the outcome only (a pure precision variable,
+     zero weight in all five exposures);
+   - pop_under_20, pct_cfa, pct_dfa: affect the outcome and the OTHER exposures,
+     but not PM2.5 directly.
+ The 4 generated gridmet exposures are themselves confounders of the PM2.5 arm:
+ they affect Y (gamma) and share drivers with PM2.5 (over-65, poverty, income,
+ home value), so they co-vary with it. The correct adjustment set is therefore
+ all 16 terms (4 gridmet + 12 census/climate).
+
+--------------------------------------------------------------------------------
+5. GLOBAL SETTINGS
+--------------------------------------------------------------------------------
+ ground-truth beta                 0.01 per ug/m^3 of PM2.5, on the rate scale
+ background base rate              0.11   (+ seasonal amplitude 0.02, lat 0.2, lon 0.1)
+ rate floor (lower clamp)          0.01   binds for 2.20% of cells (diabetes 2011)
+ offset o_i                        0.0003 * population_i, mean 2.82
+ mean lambda achieved              0.327  (so beta*E[PM2.5] = 0.10 is ~31% of it)
+ exposure shape / confounder shape linear (sqrt / log1p / U-shape available, unused)
+ interactions                      OFF
+ outcome-rate spacetime coupling   OFF  (spacetime.rho = 0, phi = 0)   <-- NOTE
+ spatial graph                     kNN, k = 8, on ZCTA centroids
+ grid                              32,657 mainland ZCTAs x 365/366 days
+ years                             2011-2020 (10 years x 5 exposures = 50 files)
+ diseases                          27
+ seeds                             exposures 12345, outcome 42 (byte-reproducible)
+
+ NOTE on the last coupling: the SAR + AR(1) operator is applied to the
+ EXPOSURES (rho, phi in table 3, always on). Applying it to the OUTCOME rate is
+ implemented and unit-tested but currently switched off. Turning it on is a
+ one-line config change and does not break the closed-form ERC (the operators
+ are mean-preserving, so the exposure slope stays exactly beta).
+
+--------------------------------------------------------------------------------
+6. THE GROUND-TRUTH ERC
+--------------------------------------------------------------------------------
+ Estimand (g-computation), matching what the model reports:
+
+   F(a) = mean over nodes z of [ sum over forecast days t of E[Y_zt | do(PM2.5 = a)] ]
+
+ do(PM2.5 = a) forces the exposure to a in every cell; confounders keep their
+ observed values. Ignoring the 0.01 clamp this is exactly LINEAR:
+
+   F(a) = A + B*a,     B = beta * |T_forecast| * mean(o)
+
+ So the slope recovers beta up to a known scale factor. Three notes:
+  - on the RATE scale (divide by the offset, no time sum) the slope is exactly beta;
+  - on the default COUNT scale (whole year summed, averaged over nodes) the curve
+    sits in the hundreds - same information, different units;
+  - src/ground_truth_erc.py does NOT use the linear formula. It evaluates the true
+    clamped rate at each a and averages, so it is exact; A + B*a is only the shape
+    that explains why the slope is beta.
+
+ The ERC is invariant to how the exposures were generated: do(.) overrides the
+ exposure term entirely. Making the treatments synthetic changed what is on disk,
+ never the estimand.
+
+ Answer key travels with the data: every counts parquet gets a .manifest.json
+ snapshot of the DGP parameters + git commit, and ground_truth_erc.py reads that
+ manifest, not the live config - so editing the config later cannot silently
+ invalidate the ground truth.
+
+--------------------------------------------------------------------------------
+7. VERIFICATION (re-measured 2026-07-21 on the generated data, diabetes 2011)
+--------------------------------------------------------------------------------
+ quantity                                              value
+ ----------------------------------------------------  --------------------------
+ ground-truth beta                                     0.0100
+ naive slope   (rate ~ PM2.5 only, unweighted)         0.0197   bias  +97%
+ naive slope   (rate ~ PM2.5 only, population-weighted) 0.0253   bias +153%
+ adjusted slope (rate ~ PM2.5 + all 16, unweighted)    0.0098   bias  -2.3%
+ adjusted slope (rate ~ PM2.5 + all 16, pop-weighted)  0.0101   bias  +1.1%
+ corr(PM2.5, its confounder signal)                    +0.76  (theory sqrt(0.6)=0.775)
+ achieved R^2(exposure ~ 12 confounders), 50 files     0.5949 - 0.6033 (target 0.60)
+
+ Method: per-cell OLS on the per-capita rate Y/o, every 8th day of 2011,
+ 1.50 M cells. The naive number depends on the weighting scheme (unweighted vs
+ population-weighted) - both are shown; the qualitative result is identical and
+ large. Adjustment recovers beta to within 2-3% either way.
+
+--------------------------------------------------------------------------------
+8. HOW IT IS RUN (three stages, in this order)
+--------------------------------------------------------------------------------
+ Stage 0  exposures   sbatch jobs/generate_exposures.sbatch
+                      src/synthetic_exposure.py
+                      -> data/covars/synth_exposure/<var>/<var>__<year>.npy
+
+ Stage 1  outcomes    sbatch jobs/regenerate_outcomes.sbatch
+                      src/synthetic_health.py  (Poisson draw)
+                      -> .../medicare_synthetic/.../sparse_counts_<var>_<year>.parquet
+                         + <...>.manifest.json
+
+ Stage 2  format      sbatch jobs/format_health.sbatch
+                      snakefile_health.smk -> dense .npy store the dataloader reads
+                      -> data/health/ccw/<var>/<var>__<year>.npy
+
+ Ground-truth ERC     python -m src.ground_truth_erc year=2011 synthetic.var_name=diabetes
+
+ ORDER MATTERS. The outcome reads the exposures off disk, so regenerating
+ exposures after outcomes silently invalidates the ground truth. Regenerate both.
+
+ All outputs go to a personal overlay
+ (/n/dominici_lab/lab/projects/julian/lego/), symlinked as data/covars and
+ data/health. The shared lab store is untouched.
+
+--------------------------------------------------------------------------------
+9. LIMITATIONS, STATED UP FRONT
+--------------------------------------------------------------------------------
+ - The rate is additive-linear in every term. Non-linear shapes (sqrt, log1p,
+   U-shape) and interactions are implemented but switched off, so the ERC is a
+   straight line - the easiest possible target. Harder shapes are one config edit.
+ - The 0.01 rate floor binds for 2.2% of cells; the ground truth accounts for it
+   exactly, but it makes the closed-form A + B*a slightly approximate.
+ - PM2.5 is clipped at 0, pinning 1.4% of cells; the exposure is therefore not
+   exactly Gaussian at the low end.
+ - Confounding strength is currently uniform (R^2 = 0.6 for all five exposures).
+   A weak/strong sweep would be more informative than a single operating point.
+ - Only the confounders in the table exist. There is no unmeasured confounding
+   by construction, so this validates estimator mechanics, not robustness to
+   violated assumptions.
+================================================================================

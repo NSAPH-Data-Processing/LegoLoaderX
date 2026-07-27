@@ -38,8 +38,12 @@ GT_YEAR="2010"                      # year to compute the ground-truth ERC for (
 ERC_OUT="/n/dominici_lab/lab/lego_loader_x/jkleutgens/erc_outputs"  # ERC output dir (lab storage, not home)
 # ------------------------------------------------
 
+# Conda/bashrc setup with nounset OFF: the system /etc/bashrc references an unset var
+# (BASHRCSOURCED) that trips 'set -u'. Re-enable strict mode right after.
+set +u
 source ~/.bashrc
 conda activate "${ENV_NAME}"
+set -u
 export PYTHONPATH="."
 mkdir -p logs/slurm
 

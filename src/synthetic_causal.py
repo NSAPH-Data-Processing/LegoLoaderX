@@ -227,8 +227,11 @@ def offset_vector(cfg, zcta_data):
 def expected_rate_grid(cfg, zcta_data, exposure_override=None):
     """The DGP's per-cell Poisson RATE ``lambda`` as a ``(n_days, n_zctas)`` array.
 
-        lambda = max(0.01, base + seasonal + lat + lon
+        lambda = max(rate_floor, base + seasonal + lat + lon
                            + beta*shape(exposure) + sum_k gamma_k*shape_k(std(C_k)) + interactions)
+
+    ``rate_floor`` (``cfg.synthetic.poisson_params.rate_floor``, default 0.01) is the lower clamp
+    that keeps the per-capita rate positive; it is applied ONCE, after the spacetime coupling.
 
     This is the SINGLE definition of the data-generating mean used for *evaluation*: the
     ground-truth ERC (``ground_truth_erc.py``) is just this averaged over cells while sweeping the
@@ -277,7 +280,8 @@ def expected_rate_grid(cfg, zcta_data, exposure_override=None):
         rate = apply_spacetime_coupling(rate, W, rho=rho, phi=phi,
                                         normalize=bool(st.get("normalize", True)))
 
-    return np.maximum(0.01, rate)
+    floor = float(p.get("rate_floor", 0.01))   # configurable lower clamp (default 0.01)
+    return np.maximum(floor, rate)
 
 
 def marginal_outcome(rate_grid, offset, forecast=slice(None), node_aggregation="mean"):
@@ -297,3 +301,125 @@ def marginal_outcome(rate_grid, offset, forecast=slice(None), node_aggregation="
     expected_counts = rate_grid * offset[None, :]           # E[Y_{t,z}] per (day, node)
     per_node = expected_counts[forecast, :].sum(axis=0)     # sum over the forecast window -> (n_zctas,)
     return float(per_node.mean() if node_aggregation == "mean" else per_node.sum())
+
+
+def _ascii_hist(x, bins=20, width=48):
+    """A compact ASCII histogram of ``x`` (clipped at p99.5 so a few outliers don't flatten it)."""
+    x = np.asarray(x, dtype=np.float64).ravel()
+    x = x[np.isfinite(x)]
+    if x.size == 0:
+        return "  histogram: (no finite values)"
+    lo = float(x.min())
+    hi = float(np.percentile(x, 99.5))
+    if not (hi > lo):
+        hi = lo + 1.0
+    counts, edges = np.histogram(np.clip(x, lo, hi), bins=bins, range=(lo, hi))
+    top = int(counts.max()) or 1
+    out = ["  histogram (clipped at p99.5):"]
+    for c, e0, e1 in zip(counts, edges[:-1], edges[1:]):
+        out.append(f"    [{e0:10.4g},{e1:10.4g})  {'#' * int(round(width * c / top))} {int(c)}")
+    return "\n".join(out)
+
+
+def describe_rate_grid(rate_grid, offset=None, floor=None, label="lambda", logger=None):
+    """Log (and return) the distribution of the per-cell Poisson RATE ``lambda`` — a diagnostic only.
+
+    Does NOT touch the data or the DGP; it just summarizes an already-built ``(n_days, n_zctas)``
+    rate grid so you can see whether ``lambda`` stays low before a full run. Reports:
+
+      * percentiles of ``lambda`` over all ``(day, zcta)`` cells (min/p1/p5/p25/median/p75/p95/p99/max),
+        plus mean and std, and a compact ASCII histogram;
+      * ``frac_at_floor`` — the fraction of cells pinned at ``floor`` (when given); a large value means
+        the rate is being clamped a lot, i.e. the DGP wants to go lower than ``rate_floor`` allows;
+      * when ``offset`` is given: the distribution of the expected count ``lambda*offset`` and the
+        implied sparsity ``E[frac zero cells] = mean(exp(-lambda*offset))`` — comparable to the
+        sparsity the generator logs after sampling.
+
+    Returns a plain dict of the summary (handy for asserting in tests). Wired into the generator via
+    ``synthetic.diagnostics.lambda_distribution`` and used by the smoke run ``src/synthetic_smoke.py``.
+    """
+    log = logger or LOGGER
+    lam = np.asarray(rate_grid, dtype=np.float64)
+    flat = lam.ravel()
+    pcts = [0, 1, 5, 25, 50, 75, 95, 99, 100]
+    q = np.percentile(flat, pcts)
+    summary = {
+        "n_cells": int(flat.size),
+        "mean": float(flat.mean()),
+        "std": float(flat.std()),
+        "percentiles": {p: float(v) for p, v in zip(pcts, q)},
+    }
+    lines = [
+        f"{label}: distribution over {flat.size:,} (day x zcta) cells",
+        f"  mean={flat.mean():.4g} std={flat.std():.4g} | min={q[0]:.4g} p1={q[1]:.4g} "
+        f"p5={q[2]:.4g} p25={q[3]:.4g} median={q[4]:.4g} p75={q[5]:.4g} p95={q[6]:.4g} "
+        f"p99={q[7]:.4g} max={q[8]:.4g}",
+    ]
+    if floor is not None:
+        frac = float(np.mean(flat <= float(floor) + 1e-12))
+        summary["floor"] = float(floor)
+        summary["frac_at_floor"] = frac
+        lines.append(f"  at floor (lambda <= {float(floor):g}): {100 * frac:.2f}% of cells")
+    if offset is not None:
+        ec = (lam * np.asarray(offset, dtype=np.float64)[None, :]).ravel()
+        eq = np.percentile(ec, [50, 95, 99, 100])
+        exp_zero = float(np.mean(np.exp(-ec)))
+        summary["expected_count"] = {"median": float(eq[0]), "p95": float(eq[1]),
+                                     "p99": float(eq[2]), "max": float(eq[3])}
+        summary["implied_sparsity_pct"] = 100.0 * exp_zero
+        lines.append(f"  expected count lambda*offset: median={eq[0]:.3g} p95={eq[1]:.3g} "
+                     f"p99={eq[2]:.3g} max={eq[3]:.3g}")
+        lines.append(f"  implied sparsity E[frac zero] = mean(exp(-lambda*offset)): "
+                     f"{100 * exp_zero:.2f}%")
+    lines.append(_ascii_hist(flat))
+    log.info("\n".join(lines))
+    return summary
+
+
+def plot_rate_distribution(rate_grid, path, floor=None, offset=None, label="lambda", bins=60):
+    """Save a histogram PNG of the per-cell rate ``lambda`` (and, if ``offset`` is given, the expected
+    counts) to ``path``. Diagnostic only — writes an image, nothing else. Returns the absolute path,
+    or ``None`` if matplotlib is unavailable. Histograms are clipped at p99.5 so a few outliers don't
+    flatten the bulk; the mean, median and (if given) the ``floor`` are drawn as reference lines.
+    """
+    import os
+    try:
+        import matplotlib
+        matplotlib.use("Agg")           # headless: no display needed on a compute node
+        import matplotlib.pyplot as plt
+    except Exception as e:              # pragma: no cover - plotting is optional
+        LOGGER.warning(f"lambda plot skipped: matplotlib unavailable ({e})")
+        return None
+
+    lam = np.asarray(rate_grid, dtype=np.float64).ravel()
+    lam = lam[np.isfinite(lam)]
+    ncols = 2 if offset is not None else 1
+    fig, axes = plt.subplots(1, ncols, figsize=(6 * ncols, 4), squeeze=False)
+
+    ax = axes[0][0]
+    hi = float(np.percentile(lam, 99.5))
+    ax.hist(np.clip(lam, lam.min(), max(hi, lam.min() + 1e-12)), bins=bins, color="#4477aa")
+    ax.axvline(float(lam.mean()), color="tab:orange", lw=1.2, label=f"mean={lam.mean():.4g}")
+    ax.axvline(float(np.median(lam)), color="k", ls="--", lw=1, label=f"median={np.median(lam):.4g}")
+    if floor is not None:
+        frac = float(np.mean(lam <= float(floor) + 1e-12))
+        ax.axvline(float(floor), color="tab:red", ls=":", lw=1.5,
+                   label=f"floor={float(floor):g} ({100 * frac:.1f}% at floor)")
+    ax.set_xlabel("lambda (per-cell rate)"); ax.set_ylabel("cells")
+    ax.set_title(f"{label}  (n={lam.size:,} cells)"); ax.legend(fontsize=8)
+
+    if offset is not None:
+        ec = (np.asarray(rate_grid, dtype=np.float64) * np.asarray(offset, dtype=np.float64)[None, :]).ravel()
+        ax2 = axes[0][1]
+        hi2 = float(np.percentile(ec, 99.5))
+        ax2.hist(np.clip(ec, ec.min(), max(hi2, ec.min() + 1e-12)), bins=bins, color="#66aa55")
+        ax2.set_xlabel("expected count  lambda*offset"); ax2.set_ylabel("cells")
+        ax2.set_title(f"expected counts (implied sparsity {100 * np.mean(np.exp(-ec)):.1f}%)")
+
+    fig.tight_layout()
+    path = os.path.abspath(path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fig.savefig(path, dpi=120)
+    plt.close(fig)
+    LOGGER.info(f"saved lambda distribution plot -> {path}")
+    return path

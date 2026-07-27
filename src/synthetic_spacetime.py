@@ -15,7 +15,7 @@ row-normalized neighbour matrix (``W @ ones == ones``, zero diagonal).
   Temporal (AR(1)/EWMA):     lambda_t    = (1 - phi) * eta_tilde_t + phi * lambda_{t-1}  phi in [0, 1)
                              with lambda_{-1} := eta_tilde_0
 
-The caller floors the result once (``max(0.01, lambda_t)``) AFTER coupling; we never floor inside
+The caller floors the result once (``max(rate_floor, lambda_t)``, ``rate_floor`` default 0.01) AFTER coupling; we never floor inside
 here -- flooring within the recursion would leak a non-linearity into the memory term and break the
 closed-form properties below.
 
@@ -251,7 +251,7 @@ def apply_spacetime_coupling(eta, W, rho=0.0, phi=0.0, normalize=True):
     """Apply the spatial (SAR) + temporal (AR(1)/EWMA) coupling to a PRE-floor rate grid.
 
     ``eta``: ``(n_days, n_zctas)`` pre-floor rate (the value built inside ``expected_rate_grid``
-    BEFORE ``np.maximum(0.01, ...)``). ``W``: row-stochastic neighbour matrix (only needed when
+    BEFORE the caller's ``np.maximum(rate_floor, ...)`` floor). ``W``: row-stochastic neighbour matrix (only needed when
     ``rho > 0``). Returns a new ``(n_days, n_zctas)`` array -- still UNFLOORED; the caller applies the
     floor once, afterwards. See the module docstring for the math and the four guaranteed properties.
 

@@ -8,7 +8,7 @@ import geopandas as gpd
 import hydra
 import numpy as np
 import pandas as pd
-from src.synthetic_causal import expected_rate_grid, offset_vector
+from src.synthetic_causal import describe_rate_grid, expected_rate_grid, offset_vector
 from src.synthetic_denom import get_zcta_data_with_geo_pop
 from src.synthetic_manifest import counts_path, write_manifest
 
@@ -100,6 +100,13 @@ def main(cfg):
     # is the SAME function the ground-truth ERC uses, so the generator can no longer drift from it.
     rate_grid = expected_rate_grid(cfg, zcta_data)
     offset = offset_vector(cfg, zcta_data)
+
+    # optional diagnostic (logging only): the distribution of the per-cell rate lambda
+    diag = cfg.synthetic.get("diagnostics", {}) or {}
+    if diag.get("lambda_distribution", False):
+        floor = float(cfg.synthetic.poisson_params.get("rate_floor", 0.01))
+        describe_rate_grid(rate_grid, offset=offset, floor=floor,
+                           label=f"lambda[{cfg.synthetic.var_name} {cfg.year}]")
 
     # get days list for a given year with calendar days
     days_list = [

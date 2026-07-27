@@ -133,7 +133,7 @@ def main(cfg):
         # spatial/temporal coupling applied to the rate (no-op when rho=phi=0). With normalize=false the
         # exposure slope this curve represents is amplified by 1/((1-rho)*(1-phi)); see synthetic_spacetime.
         "spacetime": OmegaConf.to_container(cfg.synthetic.get("spacetime", {}) or {}, resolve=True),
-        "rate_floor": 0.01,
+        "rate_floor": float(cfg.synthetic.poisson_params.get("rate_floor", 0.01)),
         "exposure_range": [float(xs[0]), float(xs[-1])],
         "n_exposure_points": int(len(xs)),
         "source": "src/synthetic_causal.expected_rate_grid (same rate the generator draws from)",
