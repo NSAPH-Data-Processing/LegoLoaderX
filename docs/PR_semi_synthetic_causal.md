@@ -1,8 +1,18 @@
-# Semi-synthetic causal DGP for ZCTA-level health counts, with closed-form ground-truth ERC and spatial+temporal rate coupling
+# Semi-synthetic causal DGP for ZCTA-level health counts: closed-form ground-truth ERC, spatial+temporal rate coupling, and generated exposures with known confounding
 
 ## 1. Summary
 
-This PR adds a semi-synthetic, causal data-generating process (DGP) for ZCTA-level daily health counts whose per-cell Poisson rate is written by us as a sum of config-specified terms, so every dose-response coefficient (`beta`, each `gamma_k`, each interaction `delta_j`) is a **known ground truth**. It ships the closed-form ground-truth exposure-response curve (ERC) via g-computation (`do(exposure=a)`), a provenance-stamped manifest that travels with the data, and — the headline addition this session — an optional **spatial (SAR) + temporal (AR(1)/EWMA) coupling** of the latent rate. Because the coupling is linear and deterministic and mean-preserving by default, realistic spatial correlation and temporal persistence are injected without breaking the closed-form ERC, so downstream ERC / g-computation pipelines can be validated against a number we chose rather than a hoped-for estimate.
+This PR adds a semi-synthetic, causal data-generating process (DGP) for ZCTA-level daily health counts whose per-cell Poisson rate is written by us as a sum of config-specified terms, so every dose-response coefficient (`beta`, each `gamma_k`, each interaction `delta_j`) is a **known ground truth**. It ships the closed-form ground-truth exposure-response curve (ERC) via g-computation (`do(exposure=a)`), a provenance-stamped manifest that travels with the data, an optional **spatial (SAR) + temporal (AR(1)/EWMA) coupling** of the latent rate, and — the headline addition of the latest commit — **generated exposures** whose dependence on the confounders is itself a known quantity.
+
+Together these close both arms of the confounding triangle:
+
+| arm | mechanism | known? |
+|---|---|---|
+| confounder → outcome | `gamma_k` in the rate | ✅ set in config |
+| exposure → outcome | `beta` in the rate | ✅ set in config, the ERC target |
+| confounder → exposure | **`src/synthetic_exposure.py`** | ✅ **new** — `R²(exposure ~ confounders) ≈ f_drivers` by construction |
+
+Previously the third arm was whatever the real PM2.5 / gridMET data happened to contain: uncontrolled and unmeasured. Now a naive exposure–outcome fit is *provably* biased by a known amount, and only a correctly adjusted model recovers `beta`. Because the coupling operators are linear, deterministic and mean-preserving by default, realistic spatial correlation and temporal persistence are injected without breaking the closed-form ERC — so downstream ERC / g-computation pipelines can be validated against a number we chose rather than a hoped-for estimate.
 
 ## 2. Motivation
 
@@ -68,6 +78,29 @@ where the offset `o_i = population_normalizer * population_i` (`offset_vector`, 
 
 **`do(exposure=x)` intervention** (`exposure_override`): passing a scalar `x` sets the exposure term to `beta*shape(x)` in **every** `(day, zcta)` cell while confounders are still read from disk unchanged — precisely the g-computation operator: intervene on treatment, hold everything else at its observed distribution, average. `normalize` (default `True`) makes both operators mean-preserving; `normalize=False` drops the `(1-rho)`/`(1-phi)` prefactors (see §5).
 
+## 3b. Theory — the treatment-assignment model (NEW)
+
+The outcome DGP above says nothing about **how the exposure got its value**. Until this commit the exposure was the real covariate read from disk, so the confounder→treatment arm was uncontrolled. `src/synthetic_exposure.py` replaces it with an explicit assignment model.
+
+Each exposure `e` mixes three **unit-variance, mutually independent** parts, so "signal strength" is a direct dial rather than something to tune by hand:
+
+```math
+z_{\text{drivers}} = \operatorname{zscore}\Big(\sum_k w_{e,k}\, \operatorname{std}(C_k)\Big), \qquad
+z_{\text{struct}}  = \operatorname{zscore}\big(\text{SAR}_{\rho_e}\text{AR}_{\phi_e}(\varepsilon)\big), \qquad
+z_{\text{noise}}   = \operatorname{zscore}(\varepsilon')
+```
+```math
+T_e = \mu_e + \sigma_e\Big(\sqrt{f_{\text{drivers}}}\;z_{\text{drivers}} + \sqrt{f_{\text{struct}}}\;z_{\text{struct}} + \sqrt{1 - f_{\text{drivers}} - f_{\text{struct}}}\;z_{\text{noise}}\Big)
+```
+
+Because `z_struct` and `z_noise` are independent of the confounders, **`OLS(T_e ~ C)` has `R² ≈ f_drivers` by construction** (`f_drivers = 0.6` in the config). The structural part reuses the *same* SAR + AR(1) operators as the outcome rate (`synthetic_spacetime.py`), so exposures are spatially and temporally correlated the way a real environmental field is.
+
+**Positivity/overlap is enforced, not hoped for.** `build_one_exposure` raises if `f_drivers + f_struct >= 1`, because `f_noise = 1 - f_drivers - f_struct` is exactly the variance the exposure retains *conditional on* the confounders. With `f_noise = 0` there is no overlap, `do(exposure = a)` extrapolates off-support, and no estimator could recover the curve regardless of how well specified it is.
+
+**Why the ground truth is unaffected.** `ground_truth_erc.py` performs `do(exposure = a)`: it *overrides* the exposure term and reads confounders from disk. It does not care how the exposure was assigned — only that the rate is `beta*shape(exposure) + sum_k gamma_k*...`. Making the exposure synthetic therefore changes **what is on disk, never the estimand**. The 4 gridMET exposures enter the outcome *standardized*, so their scale is cosmetic; only PM2.5 (read raw as `beta*PM25`) needs a realistic scale, hence `target_mean=10, target_sd=5, nonnegative=true`.
+
+Each exposure gets an independent RNG seeded by `base_seed + 1000*e_idx + year`, so the 5 treatments are not mutually collinear, and every run is reproducible. Output lands at `<covars_root>/synth_exposure/<var>/<var>__<year>.npy` — the exact dense-covar format the dataloader and the DGP already read — beside a `<var>__<year>.meta.json` recording the generation parameters and the **achieved** `R²` on the confounders.
+
 ## 4. Theory — closed-form ground-truth ERC
 
 **Estimand (g-computation).** The ground truth is the population-average expected outcome under `do(exposure=a)`, using the **same two-loop collapse** the model's ERC targets. Per node, force exposure to `a` everywhere and sum the expected outcome over the forecast window:
@@ -132,6 +165,16 @@ Verified numerically by the module `_self_test()`, not merely asserted.
 **(d) Refactor of `generate_synthetic_data`** (`src/synthetic_health.py`)
 - Now consumes the shared `expected_rate_grid` + `offset_vector` and Poisson-samples counts in **one vectorized draw** from the precomputed floored rate grid, removing the duplicated day-by-day rate rebuild (was diverging from the ERC's rate). It also calls `write_manifest(cfg)` after generation.
 
+**(e) NEW generated exposures with known confounding** (`src/synthetic_exposure.py`, `conf/var_group/synth_exposure.yaml`)
+- Public API: `build_one_exposure(cfg, zcta_data, year, spec, driver_mats, base_seed, e_idx)`, `_driver_matrix` (reuses `_load_covar_aligned(standardize=True)` — the **same** reader/standardization the outcome DGP uses, so `f_e(X)` is built from exactly the values the outcome sees), `_r2_on_drivers` (honest OLS R² on a deterministic subsample), `_save_as_covar` (maps generator mainland order → `idx2zcta` column order, NaN elsewhere).
+- New `synthetic.exposure_generation` config block: `enabled`, `base_seed`, neighbour-graph settings, the 12 `drivers`, and one entry per exposure with `f_drivers` / `f_struct` / `rho` / `phi` / `target_mean` / `target_sd` / `nonnegative` / `weights`. `enabled: false` falls back to reading the real covariates, so the old behaviour is one flag away.
+- Confounder set expanded **5 → 12** (census + `climate_types`); the 5 exposures now read `var_group: synth_exposure`. Dropping `aqdh` (NO2/O3, which stops at 2016) means every term has data through 2020, so the usable range becomes **2011–2020** (`conf/health/snakemake.yaml`). `synth_exposure` added to `conf/dataloader/config.yaml`.
+
+**(f) Configurable rate floor + λ diagnostics** (`src/synthetic_causal.py`, `src/synthetic_smoke.py`)
+- `rate_floor` is now read from `synthetic.poisson_params.rate_floor` (default `0.01`) instead of being hardcoded at three call sites; still applied exactly once, after both couplings.
+- `describe_rate_grid(rate_grid, offset, floor, label)` logs the λ percentiles, mean/std, an ASCII histogram, `frac_at_floor` (how often the DGP is being clamped), and — given the offset — the implied count sparsity `E[frac zero] = mean(exp(-λ·offset))`. Returns a plain dict so tests can assert on it. Wired into the generator behind `synthetic.diagnostics.lambda_distribution` (logging only; **not** in the manifest's `DGP_KEYS`, so it cannot affect the ground truth).
+- `src/synthetic_smoke.py` runs that standalone: builds the rate grid via the same `expected_rate_grid` and prints the distribution with **no sampling and no writes**, so a configuration can be sanity-checked before launching a full generation run.
+
 ## 7. Backward compatibility
 
 Omitting the `spacetime` block, or setting `rho=0, phi=0`, reproduces the original DGP **byte-for-byte**: `expected_rate_grid` takes the `rho or phi` branch only when non-zero (`:273`), and `apply_spacetime_coupling`'s `rho=0 AND phi=0` fast path returns `eta` untouched. This produces the identical rate grid and identical seeded counts. Covered by the regression tests in the suite below (`test_backward_compat_omitted_equals_zero_grid`, `test_backward_compat_seeded_counts_identical`).
@@ -148,36 +191,77 @@ Verified:
 - ERC slope preservation on unfloored cells (`test_erc_slope_preserved_normalize_true`: `normalize=True` → `g1-g0 = beta*Δx`; `test_erc_slope_amplified_normalize_false`: `normalize=False` → amplified by `1/((1-rho)(1-phi))`), masking `g0 > 0.01 + 1e-9`.
 - ERC sweep reuses one `W` and one LU factorization (`test_erc_sweep_reuses_caches`).
 
+`tests/test_synthetic_exposure.py` (10 tests) covers the treatment-assignment model:
+
+- **`test_r2_matches_f_drivers`** — the headline: `OLS(exposure ~ confounders)` recovers the configured `f_drivers`, i.e. the confounder→treatment arm really is the strength we asked for.
+- `test_target_mean_sd`, `test_nonnegative_clip` — the exposure lands on the requested scale, PM2.5 stays a non-negative concentration.
+- `test_reproducible_same_seed`, `test_distinct_seed_per_exposure` — bit-identical on re-run; the 5 exposures are not collinear copies.
+- `test_spatial_structure_present`, `test_temporal_structure_present` — the SAR/AR(1) parts actually induce neighbour and lag correlation.
+- **`test_f_noise_guard`** — `f_drivers + f_struct >= 1` raises rather than silently destroying overlap.
+- `test_shape_dtype`, `test_save_as_covar_roundtrip` — output is `(n_days, n_zctas)` float32 and round-trips through `_load_covar_aligned` back to the generated values.
+
+`tests/test_rate_floor_diagnostics.py` (6 tests) covers the configurable floor (`test_default_floor_is_001`, `test_rate_floor_config_raises_min`, `test_floor_default_matches_explicit`) and the diagnostic summary (`test_describe_rate_grid_floor_fraction_and_percentiles`, `test_describe_rate_grid_with_offset_sparsity`, `test_describe_rate_grid_no_floor_key_when_floor_none`).
+
 Run commands:
 
 ```bash
-pytest tests/test_synthetic_spacetime.py -v
+pytest tests/test_synthetic_spacetime.py tests/test_synthetic_exposure.py tests/test_rate_floor_diagnostics.py -v
 python -m src.synthetic_spacetime          # numerical self-test of the guaranteed properties
 ```
 
+**Status: 41 passed, 8 skipped** across the suite (excluding `tests/test_feature_embeddings.py`, which fails on a missing local CUDA toolkit — `FileNotFoundError: /usr/local/cuda/bin/nvcc` — and is untouched by this branch).
+
 ## 9. Files changed
 
-`git diff --stat origin/main..HEAD` — 6 commits (tip `25cce34`), 11 files, +1720 / −50. The index is clean (nothing staged); the only working-tree entry is the untracked `climhealth-fm/` (see below), which is intentionally excluded.
+`git diff --stat origin/main...HEAD` — **8 commits** (tip `3e6ab6b`), **26 files, +3461 / −53**. `origin/main` has been merged into the branch, so it is up to date with main.
 
 | File | Role |
 |---|---|
-| `src/synthetic_spacetime.py` | NEW spatial (SAR) + temporal (AR(1)/EWMA) coupling of the pre-floor rate; mean-preserving so the ERC slope stays exactly β; `rho=0,phi=0` = uncoupled DGP byte-for-byte |
-| `src/synthetic_causal.py` | Known causal rate terms (`beta*shape(exposure) + sum gamma_k*shape(std(C_k)) + interactions`) + `expected_rate_grid`/`offset_vector`/`marginal_outcome` shared by generator and ERC |
-| `src/synthetic_health.py` | Health-count generator; single vectorized Poisson draw from the floored rate grid + offset (refactored onto `synthetic_causal`), plus `write_manifest` |
+| `src/synthetic_exposure.py` | **NEW** treatment-assignment model: generates each exposure as `sqrt(f_drivers)*z(f(X)) + sqrt(f_struct)*z(SAR/AR noise) + sqrt(f_noise)*z(iid)`, so `R^2(exposure ~ confounders) ~ f_drivers` by construction; writes dense covar `.npy` + a meta JSON recording the achieved R^2 |
+| `src/synthetic_spacetime.py` | Spatial (SAR) + temporal (AR(1)/EWMA) coupling of the pre-floor rate; mean-preserving so the ERC slope stays exactly β; `rho=0,phi=0` = uncoupled DGP byte-for-byte. Reused by the exposure generator |
+| `src/synthetic_causal.py` | Known causal rate terms + `expected_rate_grid`/`offset_vector`/`marginal_outcome` shared by generator and ERC; now also `describe_rate_grid`/`_ascii_hist` and the configurable `rate_floor` |
+| `src/synthetic_health.py` | Health-count generator; single vectorized Poisson draw from the floored rate grid + offset, plus `write_manifest` and the optional λ diagnostic |
 | `src/synthetic_manifest.py` | Writes JSON manifest (resolved `cfg.synthetic` + provenance/git commit) next to the counts parquet; overlays only `DGP_KEYS` back onto live cfg |
+| `src/synthetic_smoke.py` | **NEW** smoke run: prints the λ distribution from the real generator rate — no sampling, no writes |
 | `src/ground_truth_erc.py` | Computes/saves the closed-form ground-truth ERC via `do(exposure=a)` using the same rate grid as the generator |
-| `conf/synthetic/config.yaml` | Hydra DGP config: paths, seed, β/γ_k, shapes, interactions, new `spacetime` and `erc` blocks |
+| `conf/synthetic/config.yaml` | Hydra DGP config: paths, seed, β/γ_k, shapes, interactions, `spacetime`, `erc`, plus the new `exposure_generation` and `diagnostics` blocks; confounders 5 → 12 |
+| `conf/var_group/synth_exposure.yaml` | **NEW** var group for the 5 generated exposures (`lego_nm`/`lego_dir` null — generated, not preprocessed from a lego source) |
+| `conf/dataloader/config.yaml` | `synth_exposure` added to `var_groups` |
+| `conf/health/snakemake.yaml` | Year range → 2011–2020 (dropping aqdh means every DGP term has data through 2020) |
+| `tests/test_synthetic_exposure.py` | **NEW** 10 tests; headline is R² recovery against `f_drivers` and the `f_noise` overlap guard |
+| `tests/test_rate_floor_diagnostics.py` | **NEW** 6 tests for the configurable floor and the λ summary |
 | `tests/test_synthetic_spacetime.py` | Offline unit tests; headline is the `rho=0,phi=0` byte-for-byte regression |
 | `docs/synthetic_spacetime.md` | Derives the SAR + AR(1)/EWMA math, mean-preserving property, and why the ERC stays closed-form |
-| `jobs/generate_5x5.sbatch` | SLURM: generate the semi-synthetic denominator + disease counts per year, optionally the ground-truth ERC |
-| `jobs/synthetic_pipeline.sbatch` | SLURM: Stage 1 synthetic Medicare raw inputs (`snakefile_synthetic.smk`) → Stage 2 dense feature store (`snakefile_health.smk`) |
+| `docs/synthetic_exposure.tex`, `docs/synthetic_exposure_summary.txt` | **NEW** write-up of the exposure-generation model |
+| `jobs/generate_exposures.sbatch` | **NEW** Stage 0 — generate the 5 synthetic exposures |
+| `jobs/regenerate_outcomes.sbatch` | **NEW** Stage 1 — regenerate outcome counts for all 27 diseases × years from the synthetic exposures |
+| `jobs/format_health.sbatch` | **NEW** Stage 2 — format sparse counts + denominators into the dense `.npy` store |
+| `jobs/generate_all.sbatch` | **NEW** counts + denominators for all diseases × years without snakemake (not installed in the `healthx` env) |
+| `jobs/smoke_lambda.sbatch` | **NEW** λ smoke run for one disease/year |
+| `jobs/generate_5x5.sbatch`, `jobs/synthetic_pipeline.sbatch` | SLURM drivers for the 5+5 generation and the two-stage pipeline |
 | `.gitignore` | +1 line (`outputs/*`) |
 
-**`climhealth-fm/`** is an untracked **nested git repository** (its own `.git/`), tracked by neither the outer repo (`git ls-files climhealth-fm/` is empty) nor ignored; it contributes nothing to `origin/main..HEAD` and is **intentionally excluded** from this PR.
+**`climhealth-fm/`** is an untracked **nested git repository** (its own `.git/`), tracked by neither the outer repo (`git ls-files climhealth-fm/` is empty) nor ignored; it contributes nothing to `origin/main...HEAD` and is **intentionally excluded** from this PR.
 
 ## 10. How to run
 
+The pipeline is now three stages; Stage 0 is new.
+
 ```bash
+# Stage 0 - generate the 5 SYNTHETIC exposures as f(confounders) + structure + noise
+sbatch jobs/generate_exposures.sbatch
+#   or one year inline:  PYTHONPATH=. python -m src.synthetic_exposure year=2011
+
+# Stage 1 - (re)generate the outcome counts for all 27 diseases x years from those exposures
+sbatch jobs/regenerate_outcomes.sbatch
+
+# Stage 2 - format sparse counts + denominators into the dense .npy store the dataloader reads
+sbatch jobs/format_health.sbatch
+
+# Sanity-check lambda BEFORE committing to a full run (no sampling, no writes)
+sbatch jobs/smoke_lambda.sbatch
+#   or:  PYTHONPATH=. python -m src.synthetic_smoke year=2011 synthetic.var_name=diabetes
+
 # Regenerate the 5-exposure + 5-confounder semi-synthetic counts (writes counts parquet + manifest)
 sbatch jobs/generate_5x5.sbatch
 
@@ -195,4 +279,9 @@ python -m src.ground_truth_erc synthetic.erc.forecast_start=<d> synthetic.erc.fo
 - **`expected_rate_grid` is the single source of truth** (`src/synthetic_causal.py:227`). Both the generator (via `synthetic_health.generate_synthetic_data`) and the ground truth (`ground_truth_erc.py`) draw from it; there is no second rate implementation. Any DGP change belongs here and only here — confirm nothing re-derives the rate downstream.
 - **`normalize=false` changes the represented estimand.** It amplifies the exposure slope by `1/((1-rho)(1-phi))`. Still exact and closed-form, but it is a different curve; check the config's `spacetime.normalize` matches the intended estimand.
 - **`W` row-alignment depends on `zcta_data` row order.** `build_spatial_weights` builds `W` from `zcta_data` centroids; `eta`'s columns and `offset`'s entries must be in the same ZCTA order for the coupling and offset to align. Confirm the row order is stable between rate construction and offset application.
-- **Floor is applied exactly once, after both couplings** (`:280`); `apply_spacetime_coupling` returns unfloored values by design. Slope-exactness holds only on cells with `g0 > 0.01` — the caveat the ERC slope tests mask for.
+- **Floor is applied exactly once, after both couplings** (`:280`); `apply_spacetime_coupling` returns unfloored values by design. Slope-exactness holds only on cells with `g0 > rate_floor` — the caveat the ERC slope tests mask for.
+- **Generated exposures change the data, not the estimand.** `ground_truth_erc.py` does `do(exposure=a)`, overriding the exposure and reading confounders from disk, so it is indifferent to how the exposure was assigned. Worth confirming that nothing downstream assumes the exposure on disk is the real covariate.
+- **`f_noise = 1 - f_drivers - f_struct` is the overlap knob.** It is the exposure variance remaining *conditional on* the confounders. Driving it to zero destroys positivity and makes the ERC unidentifiable; `build_one_exposure` raises rather than allowing it (`test_f_noise_guard`). Check the configured `f_drivers=0.6, f_struct=0.2` is the confounding strength intended.
+- **PM2.5 is the only exposure whose scale matters.** It is read raw as `beta*PM25`, so `target_mean=10, target_sd=5, nonnegative=true` keeps `beta=0.01` calibrated; the other four enter standardized, so their mean/sd are cosmetic.
+- **`synth_exposure` is a generated var group**, not preprocessed from a lego source (`lego_nm`/`lego_dir` are null). It must exist in the covars root before Stage 1 runs — Stage 0 writes it.
+- **The `scan` CI check is red for an unrelated reason.** Step 5 "Configure AWS Credentials (OIDC)" fails and the Inspector scan (step 6) is *skipped*, so no vulnerability was actually found. The same failure hits every `pull_request`-event run in this repo (PR #58, and PR #59's own commits); only `push`-to-main runs succeed, which suggests the IAM role's trust policy accepts `ref:refs/heads/main` but not the `pull_request` OIDC subject. Not fixable from this branch.
