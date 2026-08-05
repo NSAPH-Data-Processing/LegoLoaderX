@@ -124,16 +124,45 @@ def _load_covar_aligned(root, var_group, var, year, zctas, n_days, temporal_res,
     return out
 
 
-def _shaped_exposure(cfg, zctas, n_days, cov_root, exposure_override):
+def _shaped_exposure(cfg, zctas, n_days, cov_root, exposure_override,
+                     exposure_scale=None, scale_center=0.0):
     """Return ``shape(exposure)`` — a scalar under ``do(exposure=x)``, else a ``(n_days, n_zctas)``
     array of the real PM2.5 from disk. The shape (``synthetic.exposure_shape``) is applied here so
-    both the generator and the ground-truth ERC see the identical (possibly non-linear) form."""
+    both the generator and the ground-truth ERC see the identical (possibly non-linear) form.
+
+    TWO INTERVENTIONS ARE SUPPORTED (they are mutually exclusive):
+
+    * ``exposure_override=x`` — ``do(exposure = x)``: the exposure is the constant ``x`` in every
+      cell. This traces the classic exposure-response CURVE (level intervention).
+    * ``exposure_scale=delta`` — a MULTIPLICATIVE SHIFT of the observed exposure field, the
+      estimand ``G(delta)`` with ``G(1) = factual``. The exposure keeps its own spatial/temporal
+      pattern and is only rescaled::
+
+          X  ->  c + delta * (X - c)
+
+      ``scale_center=c`` decides *in which units* the multiplication happens, and this is NOT a
+      cosmetic choice — it must match what the model-side code multiplies:
+
+      - ``c = 0`` (default): a true multiplicative shift of the RAW exposure, ``X -> delta*X``.
+        Use this when the evaluation scales the exposure in physical units (ug/m3).
+      - ``c = mean(X)``: what you get when the evaluation multiplies the *standardized* channel
+        the loader serves, ``z -> delta*z`` with ``z = (X - mean)/std``. Solving back for the raw
+        value gives ``X -> mean + delta*(X - mean)`` — a fan-out about the mean, whose effect on
+        the rate is smaller than ``delta*X`` by ``beta*(delta-1)*mean``. ``legoloaderx.XDataset``
+        normalizes every covariate it serves, so this is the convention a naive
+        ``batch[treatment][:, m] *= delta`` actually implements.
+    """
     shape = cfg.synthetic.get("exposure_shape", "linear")
     if exposure_override is not None:
+        if exposure_scale is not None:
+            raise ValueError("pass exposure_override (do(X=x)) or exposure_scale (X -> delta*X), not both")
         return _apply_shape(float(exposure_override), shape)          # do(exposure=x): same x everywhere
     exp_vg, exp_var = cfg.synthetic.exposure_var_group, cfg.synthetic.exposure_var
     raw = _load_covar_aligned(cov_root, exp_vg, exp_var, cfg.year, zctas, n_days,
                               temporal_res="daily", standardize=False)
+    if exposure_scale is not None:
+        c = float(scale_center)
+        raw = c + float(exposure_scale) * (raw - c)   # new array; never mutates the module cache
     return _apply_shape(raw, shape)
 
 
@@ -148,7 +177,7 @@ def _confounder_value(cfg, c, zctas, n_days, cov_root, shape):
     return _apply_shape(std, shape, float(c.get("center", 0.0)))
 
 
-def build_extra_rate(cfg, zcta_data, exposure_override=None):
+def build_extra_rate(cfg, zcta_data, exposure_override=None, exposure_scale=None, scale_center=0.0):
     """Build the additive causal rate term for one year, aligned to ``zcta_data`` row order.
     Reads ``cfg.synthetic`` (``beta``, ``exposure_*``, ``exposure_shape``, ``confounders``,
     ``interactions``/``interaction_terms``) and ``cfg.year``. Returns a ``(n_days, n_zctas)``
@@ -159,20 +188,26 @@ def build_extra_rate(cfg, zcta_data, exposure_override=None):
     EVERY cell instead of the real PM2.5 loaded from disk — i.e. the ``do(exposure = x)``
     intervention. Confounders are always read from disk unchanged. This is what lets the
     ground-truth ERC be computed straight from the DGP (see ``expected_rate_grid``).
+
+    ``exposure_scale`` / ``scale_center``: the alternative MULTIPLICATIVE-SHIFT intervention
+    ``X -> scale_center + delta*(X - scale_center)`` (``delta = 1`` is the factual world). See
+    ``_shaped_exposure`` for why ``scale_center`` must match the units the evaluation multiplies in.
     """
     import calendar
 
     n_days = 366 if calendar.isleap(int(cfg.year)) else 365
     zctas = zcta_data["zcta"]
     cov_root = cfg.synthetic.get("exposure_covars_root", "data/covars")
-    quiet = exposure_override is not None        # ERC sweeps call this many times; log only the real build
+    # ERC / shift sweeps call this many times; log only the real (unintervened) build
+    quiet = exposure_override is not None or exposure_scale is not None
     extra = np.zeros((n_days, len(zctas)), dtype=np.float32)
 
     # --- exposure term: beta * shape(exposure) ---
     beta = float(cfg.synthetic.get("beta", 0.0))
     shaped_exposure = None
     if beta:
-        shaped_exposure = _shaped_exposure(cfg, zctas, n_days, cov_root, exposure_override)
+        shaped_exposure = _shaped_exposure(cfg, zctas, n_days, cov_root, exposure_override,
+                                           exposure_scale, scale_center)
         if not quiet:
             exp_vg, exp_var = cfg.synthetic.exposure_var_group, cfg.synthetic.exposure_var
             LOGGER.info(f"Exposure term: {beta} * {cfg.synthetic.get('exposure_shape', 'linear')}({exp_vg}/{exp_var})")
@@ -196,7 +231,8 @@ def build_extra_rate(cfg, zcta_data, exposure_override=None):
             for name in refs:
                 if name == "exposure":
                     if shaped_exposure is None:   # interaction needs the exposure but beta==0
-                        shaped_exposure = _shaped_exposure(cfg, zctas, n_days, cov_root, exposure_override)
+                        shaped_exposure = _shaped_exposure(cfg, zctas, n_days, cov_root,
+                                                           exposure_override, exposure_scale, scale_center)
                     prod = prod * shaped_exposure
                 else:
                     c = conf_by_var.get(name)
@@ -224,7 +260,7 @@ def offset_vector(cfg, zcta_data):
     return p.population_normalizer * zcta_data["population"].to_numpy(dtype=np.float64)
 
 
-def expected_rate_grid(cfg, zcta_data, exposure_override=None):
+def expected_rate_grid(cfg, zcta_data, exposure_override=None, exposure_scale=None, scale_center=0.0):
     """The DGP's per-cell Poisson RATE ``lambda`` as a ``(n_days, n_zctas)`` array.
 
         lambda = max(rate_floor, base + seasonal + lat + lon
@@ -240,6 +276,8 @@ def expected_rate_grid(cfg, zcta_data, exposure_override=None):
 
     ``exposure_override=x`` fixes the exposure to ``x`` in every cell (the ``do(exposure=x)``
     intervention used to trace the ERC); otherwise the real PM2.5 from the store is used.
+    ``exposure_scale=delta`` instead RESCALES the observed field about ``scale_center`` — the
+    multiplicative-shift estimand ``G(delta)``, ``G(1) = factual`` (see ``_shaped_exposure``).
 
     SPATIAL + TEMPORAL COUPLING (``cfg.synthetic.spacetime``)
     --------------------------------------------------------
@@ -264,8 +302,9 @@ def expected_rate_grid(cfg, zcta_data, exposure_override=None):
     seasonal = p.seasonal_amplitude * np.sin(2 * np.pi * np.arange(n_days) / 365.25)
     rate = (p.base_rate + seasonal[:, None] + lat_eff[None, :] + lon_eff[None, :]).astype(np.float64)
 
-    # + beta*exposure + sum_k gamma_k*std(confounder_k)  (with optional do(exposure=x))
-    extra = build_extra_rate(cfg, zcta_data, exposure_override=exposure_override)
+    # + beta*exposure + sum_k gamma_k*std(confounder_k)  (with optional do(exposure=x) / delta-shift)
+    extra = build_extra_rate(cfg, zcta_data, exposure_override=exposure_override,
+                             exposure_scale=exposure_scale, scale_center=scale_center)
     if extra is not None:
         rate = rate + extra
 
@@ -300,6 +339,93 @@ def marginal_outcome(rate_grid, offset, forecast=slice(None), node_aggregation="
     """
     expected_counts = rate_grid * offset[None, :]           # E[Y_{t,z}] per (day, node)
     per_node = expected_counts[forecast, :].sum(axis=0)     # sum over the forecast window -> (n_zctas,)
+    return float(per_node.mean() if node_aggregation == "mean" else per_node.sum())
+
+
+def forecast_window_weights(n_days, window, n_forecast, t0_start=0, t0_end=None,
+                            drop_incomplete=True):
+    """How many times each calendar day is counted by the rolling-forecast estimand — and how
+    many of those times it was actually intervened on.
+
+    The model is a *windowed forecaster*, so the estimand is not one sum over days::
+
+        G(.) = (1/V) sum_z sum_{t0} sum_{tau} sum_{k}  f(X^(t0), A^(t0))[tau, k, z, o]
+
+    Alignment (``climhealth.legoloaderx_ext.data_utils.prepare_batch``, and
+    ``legoloaderx.health_dataloader.HealthDataset._counts``): a sample starting at day ``t0``
+    feeds the model ``window`` daily input slices ``tau = 0..window-1`` (calendar days
+    ``t0+tau``), and the decoder emits ``n_forecast`` lead days ``k = 0..n_forecast-1`` off each
+    of them (``ParametricDecoder._decode_nodes``: one shared latent + a per-lead position
+    embedding, so all leads come out of ONE forward pass — the model is direct multi-horizon,
+    NOT autoregressive). Prediction ``(t0, tau, k)`` therefore targets calendar day::
+
+        s = t0 + tau + k                                   (k = 0 is the same day as input tau)
+
+    Two multiplicities follow, and they are NOT the same number:
+
+    * ``w_all[s]`` — how often day ``s`` is summed at all. Interior days land in ``window *
+      n_forecast`` different (t0, tau, k) triples, so a naive "the model predicts a window"
+      correction of ``x n_forecast`` is already wrong by a factor of ``window``.
+    * ``w_int[s]`` — how often day ``s`` is summed *while its own exposure was intervened on*.
+      The intervention ``A^(t0)[m* -> delta A_m*]`` only touches the sample's own input days
+      ``t0..t0+window-1``, so this requires ``tau + k <= window - 1``. For a SAME-DAY dose-response
+      (the DGP here: ``rate`` depends on ``exposure[s]``, and ``spacetime.phi = 0``) every
+      prediction with ``tau + k >= window`` targets a day whose exposure was left factual and so
+      carries **exactly zero** causal contrast, however large ``delta`` is.
+
+    With ``window=3, n_forecast=5`` only ``6`` of the ``15`` (tau, k) pairs satisfy
+    ``tau + k <= 2``: 60% of the summed predictions dilute the contrast. Scoring a model against a
+    ground truth that used ``w_all`` for the contrast would make a perfectly calibrated model look
+    like it recovered 40% of the truth.
+
+    ``t0_start``/``t0_end`` bound the start days (``t0_end`` exclusive). With ``drop_incomplete``
+    (default) ``t0`` is capped so every window fits inside ``[0, n_days)`` — otherwise the tail
+    windows would silently reach into the next year, which is not in this year's rate grid.
+
+    Returns ``(w_all, w_int)``, two float64 arrays of length ``n_days``.
+    """
+    # A start day t0 reaches at most t0 + (window-1) + (n_forecast-1); keeping that inside the
+    # year means t0 <= n_days-1-max_lag, i.e. an exclusive end of n_days - max_lag.
+    max_lag = int(window) + int(n_forecast) - 2
+    if t0_end is None:
+        t0_end = n_days - max_lag if drop_incomplete else n_days
+    t0_end = max(int(t0_start), int(t0_end))
+    w_all = np.zeros(int(n_days), dtype=np.float64)
+    w_int = np.zeros(int(n_days), dtype=np.float64)
+    for tau in range(int(window)):
+        for k in range(int(n_forecast)):
+            lag = tau + k
+            lo, hi = int(t0_start) + lag, t0_end + lag        # target days for this (tau, k)
+            lo, hi = max(lo, 0), min(hi, int(n_days))
+            if hi <= lo:
+                continue
+            w_all[lo:hi] += 1.0
+            if lag <= int(window) - 1:                       # target day's own exposure was scaled
+                w_int[lo:hi] += 1.0
+    return w_all, w_int
+
+
+def windowed_outcome(rate_grid_intervened, rate_grid_factual, offset, w_all, w_int,
+                     node_aggregation="mean"):
+    """Collapse the rolling-forecast estimand into ONE number, exactly.
+
+    ``rate_grid_intervened`` is the DGP rate under the intervention, ``rate_grid_factual`` the rate
+    with the exposure left alone. A prediction that targets an intervened day reads the former, one
+    that targets a factual day reads the latter, so::
+
+        G = agg_z [ offset_z * sum_s ( w_int[s]*lambda_int[s,z] + (w_all[s]-w_int[s])*lambda_fac[s,z] ) ]
+
+    Pass ``rate_grid_factual=None`` (or ``w_int is w_all``) for a GLOBAL intervention — one that
+    rescales the whole exposure field rather than only each sample's own input window — in which
+    case every summed day is an intervened day and this reduces to ``sum_s w_all[s]*lambda_int``.
+    """
+    lam_i = np.asarray(rate_grid_intervened, dtype=np.float64)
+    if rate_grid_factual is None:
+        per_day = w_all @ lam_i                                  # (n_zctas,)
+    else:
+        lam_f = np.asarray(rate_grid_factual, dtype=np.float64)
+        per_day = w_int @ lam_i + (w_all - w_int) @ lam_f
+    per_node = per_day * np.asarray(offset, dtype=np.float64)
     return float(per_node.mean() if node_aggregation == "mean" else per_node.sum())
 
 

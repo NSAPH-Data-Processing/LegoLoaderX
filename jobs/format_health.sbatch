@@ -1,7 +1,13 @@
 #!/bin/bash
 #
 #SBATCH -J format_health
-#SBATCH -p shared                # partition (queue)
+#SBATCH -p gpu_test              # partition (queue)
+#SBATCH --gres=gpu:1             # NOT used by this job -- snakemake/numpy/pandas only. The
+                                 # gpu_test partition REJECTS jobs that request no GPU
+                                 # ("if you have CPU work for this hardware please use test"),
+                                 # so a gres request is mandatory to sit here at all. Switch to
+                                 # `-p test` (or `-p shared`) and delete this line to stop
+                                 # holding an A100 slice for CPU work.
 #SBATCH -c 8                     # cores
 #SBATCH --mem 32GB               # memory
 #SBATCH -t 02:00:00              # walltime (HH:MM:SS)

@@ -1,5 +1,14 @@
 # Semi-synthetic causal DGP for ZCTA-level health counts: closed-form ground-truth ERC, spatial+temporal rate coupling, and generated exposures with known confounding
 
+> **This is the exhaustive appendix, not the starting point.** Reviewers should read
+> [`semi_synthetic_theory.pdf`](semi_synthetic_theory.pdf) (3 pages, the theory) and
+> [`PR_description.md`](PR_description.md) (the summary and review guide) first, then come here for
+> per-function detail.
+>
+> Note that the sections below narrate the branch's *evolution*, so earlier sections describe
+> configurations that later sections replace — §6(a)'s 5 confounders and NO2/O3 exposure terms are
+> superseded by §6(e). `conf/synthetic/config.yaml` is the authority on the current end state.
+
 ## 1. Summary
 
 This PR adds a semi-synthetic, causal data-generating process (DGP) for ZCTA-level daily health counts whose per-cell Poisson rate is written by us as a sum of config-specified terms, so every dose-response coefficient (`beta`, each `gamma_k`, each interaction `delta_j`) is a **known ground truth**. It ships the closed-form ground-truth exposure-response curve (ERC) via g-computation (`do(exposure=a)`), a provenance-stamped manifest that travels with the data, an optional **spatial (SAR) + temporal (AR(1)/EWMA) coupling** of the latent rate, and — the headline addition of the latest commit — **generated exposures** whose dependence on the confounders is itself a known quantity.

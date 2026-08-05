@@ -1,0 +1,185 @@
+\documentclass[11pt]{article}
+\usepackage[margin=0.95in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\Exp}{\mathbb{E}}
+
+\title{A semi-synthetic benchmark with a known exposure--response curve\\
+\large Why the construction is what it is, and what it does and does not guarantee}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-2em}
+
+\section{The problem}
+
+We want to know whether the model recovers a causal exposure--response curve. On real data this
+question has no answer: the true curve is exactly the unknown being estimated, so a recovered
+curve can only be compared against another estimate, and any disagreement is uninterpretable.
+
+The way out is to build data whose answer we chose. We keep the \emph{real} covariates --- real
+PM$_{2.5}$, real gridMET, real census --- and synthesise only the \emph{outcome}, from a rate we
+write down ourselves. The model trains on exactly the numbers that produced its target, and we can
+ask whether the curve it recovers is the curve we injected.
+
+This is worth doing only if two things hold. The benchmark must be \textbf{hard}: an unconfounded
+exposure would let naive regression recover the truth, failing to separate a causal estimator from
+a curve-fitter. And the ground truth must be \textbf{exact}: a Monte-Carlo ``truth'' carries its own
+error bars, hiding small biases. Sections~\ref{sec:dgp} and~\ref{sec:truth} address these in turn.
+
+\section{The generative model}\label{sec:dgp}
+
+Let $t$ index days, $i$ index the $V$ ZCTAs. Write $X_{t,i}$ for the exposure (PM$_{2.5}$,
+in $\mu$g/m$^3$) and $\tilde C^{(k)}_{t,i}$ for the $k$-th standardised confounder. The
+per-capita Poisson rate is a sum of terms we specify:
+\begin{equation}\label{eq:rate}
+  \eta_{t,i} \;=\; \underbrace{r_0 + A_s \sin\!\Big(\tfrac{2\pi t}{365.25}\Big)
+                  + \ell_{\mathrm{lat}}(i) + \ell_{\mathrm{lon}}(i)}_{\text{seasonal + geographic background}}
+   \;+\; \beta\,X_{t,i} \;+\; \sum_k \gamma_k\, \tilde C^{(k)}_{t,i},
+\end{equation}
+\begin{equation}\label{eq:draw}
+  \lambda_{t,i} \;=\; \max(\lambda_{\min},\,\eta_{t,i}), \qquad
+  Y_{t,i} \;\sim\; \mathrm{Poisson}\big(\lambda_{t,i}\, o_i\big), \qquad
+  o_i = \kappa \cdot \mathrm{pop}_i .
+\end{equation}
+Here $\beta$ \emph{is} the ground-truth dose--response and each $\gamma_k$ is a known confounder
+effect. The floor $\lambda_{\min}$ keeps the rate positive; $o_i$ is the population offset, so
+$\lambda$ is a rate per person and $\lambda o$ an expected count.
+
+Three choices here are deliberate. The link is \textbf{identity, not log}, so $\Exp[Y]/o$ is
+exactly linear in $X$: the ground truth is a closed form rather than an integral, and an ordinary
+least-squares fit recovers $\beta$ and every $\gamma_k$ directly --- a check on the generator that
+needs no model at all. The \textbf{exposure enters raw and confounders standardised}, so $\beta$ is
+``per $\mu$g/m$^3$'' and comparable to the epidemiological literature, while each $\gamma_k$ is per
+standard deviation and so comparable across covariates on very different scales. And the
+dose--response is \textbf{same-day} --- $\lambda_{t,i}$ depends on $X_{t,i}$ and nothing else ---
+the simplest defensible choice, with a sharp consequence for windowed forecasting
+(Section~\ref{sec:window}).
+
+\subsection*{Closing the confounding triangle}
+
+Confounding needs two arms: the confounder must affect the outcome, \emph{and} it must affect the
+exposure. Equation~\eqref{eq:rate} supplies the first through $\gamma_k$. The second is whatever
+the real data happens to contain --- real income is correlated with real PM$_{2.5}$, but by an
+amount we neither control nor know.
+
+An optional generator supplies the missing arm on demand, decomposing each exposure into three
+independent unit-variance parts,
+\begin{equation}\label{eq:expo}
+  X_e \;=\; m_e + s_e\Big(\sqrt{f^{\mathrm{dr}}}\, z\big(\textstyle\sum_k w_{ek}\tilde C^{(k)}\big)
+        \;+\; \sqrt{f^{\mathrm{st}}}\, z\big(\mathcal{S}_{\rho,\phi}\varepsilon\big)
+        \;+\; \sqrt{1 - f^{\mathrm{dr}} - f^{\mathrm{st}}}\, z(\varepsilon')\Big),
+\end{equation}
+where $z(\cdot)$ standardises and $\mathcal{S}_{\rho,\phi}$ imposes spatial and temporal
+correlation. Because the parts are orthogonal by construction, $R^2$ of the exposure on the
+confounders equals $f^{\mathrm{dr}}$ --- the confounding strength becomes a dial, not an accident.
+
+The residual fraction $f^{\mathrm{no}} = 1 - f^{\mathrm{dr}} - f^{\mathrm{st}}$ is not slack: it is
+the exposure variation remaining \emph{conditional on} the confounders. Driving it to zero destroys
+positivity and makes the curve unidentifiable at any sample size, so the generator refuses it.
+
+\begin{center}
+\begin{tabular}{llc}
+\toprule
+Arm & Mechanism & Known? \\
+\midrule
+confounder $\to$ outcome  & $\gamma_k$ in \eqref{eq:rate}         & set in config \\
+exposure $\to$ outcome    & $\beta$ in \eqref{eq:rate}            & set in config; the target \\
+confounder $\to$ exposure & $f^{\mathrm{dr}}$ in \eqref{eq:expo}  & set in config \emph{when generated} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Both worlds are supported. With \emph{real} exposures the third arm is uncontrolled but the data
+are more realistic and the model needs no reconfiguration; with \emph{generated} exposures the
+third arm is exact. The first is the default; one config switch selects the other.
+
+\section{The ground truth}\label{sec:truth}
+
+Two interventions are of interest. The \textbf{level} intervention $\mathrm{do}(X = a)$ sets the
+exposure to a constant everywhere and traces the classical exposure--response curve. The
+\textbf{shift} intervention $X \mapsto \delta X$ rescales the observed field, preserving its
+spatial and temporal texture; $\delta = 1$ is the factual world. Under either, confounders are
+left at their observed values --- that is precisely the g-computation operator.
+
+The crucial point is that \eqref{eq:rate} is deterministic given the covariates. The Poisson draw
+in \eqref{eq:draw} adds noise to the realised counts but not to their \emph{mean}, and the ground
+truth is a statement about means. So we never simulate: we evaluate $\lambda$ under the
+intervention directly, in closed form, including the floor. For the unfloored cells the slopes are
+analytic,
+\begin{equation}\label{eq:slopes}
+  \frac{\partial}{\partial a}\,\Exp[Y \mid \mathrm{do}(X=a)] = \beta\, o,
+  \qquad
+  \frac{\partial}{\partial \delta}\,\Exp[Y \mid X \mapsto \delta X] = \beta\, o\, \Exp[X],
+\end{equation}
+so the two curves differ only by the exposure's own magnitude --- a cross-check we use to validate
+them against each other. The floor is the only source of inexactness: it is a genuine
+nonlinearity, so \eqref{eq:slopes} holds exactly only where $\eta > \lambda_{\min}$, which in
+practice is about $99\%$ of cells.
+
+\paragraph{Units are part of the estimand.} The data loader serves every covariate standardised.
+Multiplying that channel by $\delta$ therefore implements $X \mapsto \mu + \delta(X - \mu)$, a
+fan-out about the mean, not $X \mapsto \delta X$. The two are different interventions and can even
+have opposite sign: if the year's mean exposure sits below the normalising mean $\mu$, ``increasing
+by $10\%$'' in standardised units \emph{decreases} the expected outcome. Whichever convention the
+evaluation uses, the ground truth must use the same one.
+
+\section{The estimand is a sum over forecast windows}\label{sec:window}
+
+The model is not a per-day regressor. From a start day $t_0$ it consumes $W$ daily input slices
+($\tau = 0,\dots,W-1$, calendar day $t_0 + \tau$) and emits $H$ forecast leads off each
+($k = 0,\dots,H-1$). All leads come from one forward pass --- a learned per-lead embedding on a
+shared latent --- so the model is \emph{direct multi-horizon}, not autoregressive. Nothing is fed
+back, so no error compounds and the closed form of Section~\ref{sec:truth} survives intact.
+
+Prediction $(t_0,\tau,k)$ targets calendar day $s = t_0 + \tau + k$. Sweeping $t_0$ across the year
+and summing gives the estimand
+\begin{equation}\label{eq:estimand}
+  G(\delta) \;=\; \frac{1}{V}\sum_{i}\sum_{t_0}\sum_{\tau=0}^{W-1}\sum_{k=0}^{H-1}
+     f\big(\mathbf{X}^{(t_0)},\, A^{(t_0)}[\,m^\star \mapsto \delta A^{(t_0)}_{m^\star}]\big)_{\tau,k,i}\,.
+\end{equation}
+Two distinct multiplicities follow, and conflating them is the easiest way to misread a result.
+
+First, a day in the interior of the year is summed $W \cdot H$ times, not $H$ times. A correction
+of ``$\times H$ because the model predicts a window'' is short by a factor of $W$.
+
+Second --- and this is the subtle one --- the intervention $A^{(t_0)}$ touches only that sample's
+own $W$ input days, $t_0,\dots,t_0+W-1$. A prediction with $\tau + k \geq W$ therefore targets a
+day whose exposure was left factual. Because the dose--response is same-day, those predictions
+carry \emph{exactly zero} causal contrast, however large $\delta$ is. Writing $w_{\mathrm{all}}(s)$
+and $w_{\mathrm{int}}(s)$ for the two counts,
+\begin{equation}
+  G(\delta) \;=\; \frac{1}{V}\sum_i o_i \sum_s
+    \Big[ w_{\mathrm{int}}(s)\,\lambda_{s,i}(\delta) \;+\;
+          \big(w_{\mathrm{all}}(s) - w_{\mathrm{int}}(s)\big)\,\lambda_{s,i}(1) \Big],
+\end{equation}
+with $w_{\mathrm{int}}/w_{\mathrm{all}} = \tfrac{1}{2}(W{+}1)/H$ in the interior (both ramp at the
+year's edges). At $W = H = 30$ that is $465/900 \approx 52\%$; at $W = 3$, $H = 5$ it is
+$6/15 = 40\%$. The remainder dilutes the curve without contributing signal.
+
+The practical consequence: a perfectly calibrated model scored against a ground truth that
+intervened on the \emph{whole} exposure field, rather than window-locally, appears to recover only
+that fraction of the true effect. Both conventions are legitimate --- they are different estimands
+--- but they must match on both sides, and $W$ and $H$ must be the values the model was trained
+with.
+
+\section{What this does and does not give you}
+
+The construction guarantees that $\beta$ and every $\gamma_k$ are known exactly; that the ground
+truth is computed from the same rate expression the generator draws from, so the two cannot drift;
+and that a manifest of the resolved parameters is written beside every dataset, so the answer key
+travels with the data rather than with a config file that may have moved on.
+
+It does not make the benchmark realistic in every respect. The outcome is additive and same-day by
+construction, so it rewards estimators matched to that structure. Poisson noise comes from a single
+seeded stream, so residuals are correlated across diseases and years and should not be read as
+signal. A confounder that is constant in the source data contributes nothing regardless of its
+stated $\gamma$ --- harmless for identification, but not a variable the model must adjust for. And
+the benchmark certifies that a correct adjustment recovers $\beta$; it says nothing about
+robustness to confounders outside the specified set.
+
+\end{document}
