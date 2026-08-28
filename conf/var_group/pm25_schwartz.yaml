@@ -1,0 +1,13 @@
+var_group_name: pm25_schwartz
+vars: [pm25]
+descriptions:
+  pm25: "Fine particulate matter in air, given as the daily average mass concentration of particles 2.5 micrometers or smaller in micrograms per cubic meter."
+valid_normalize: true
+# Source covers 2017-2020 only; it extends the aqdh (air_pollution__schwartz) record,
+# which stops at 2016. The global clamp in conf/snakemake.yaml keeps this at 2017-2020.
+min_year: 2017
+max_year: 2020
+min_spatial_res: zcta
+min_temporal_res: daily
+lego_nm: pm25__schwartz__zcta_daily
+lego_dir: lego/environmental/pm25__schwartz/zcta_daily/

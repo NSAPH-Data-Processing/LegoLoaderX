@@ -1,0 +1,15 @@
+var_group_name: pm25_randall
+vars: [pm25]
+descriptions:
+  pm25: "Monthly mean fine particulate matter concentration in micrograms per cubic meter, from a satellite and chemical-transport hybrid model area-averaged over each ZIP code tabulation area."
+valid_normalize: true
+# V5GL is used in preference to V6GL: at zcta_monthly, V6GL carries physically impossible
+# negative concentrations (min -247 ug/m^3 in 2010) while V5GL has none (min 1.12).
+# The source itself spans 1998-2023; conf/snakemake.yaml (min_year 2000 / max_year 2020)
+# clamps the build to 2000-2020. Widen that global range to pick up 1998-1999 and 2021-2023.
+min_year: 1998
+max_year: 2023
+min_spatial_res: zcta
+min_temporal_res: monthly
+lego_nm: pm25__randall__zcta_monthly
+lego_dir: lego/environmental/pm25__randall/V5GL/zcta_monthly/
