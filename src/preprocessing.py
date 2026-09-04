@@ -31,6 +31,10 @@ def main(cfg):
     idx2zcta = pd.read_parquet(f"{cfg.output_dir}/idx2zcta.parquet")[cfg.spatial_res].tolist()
     n = len(idx2zcta)
     z2i = {z: i for i, z in enumerate(idx2zcta)}
+    # some sources store zcta float-stringified ("01011" -> "1011.0"), which misses the
+    # lookup below and silently yields an all-NaN array; register those forms as aliases
+    if cfg_vg.get("zcta_float_ids", False):
+        z2i.update({f"{int(z)}.0": i for z, i in list(z2i.items())})
 
     if cfg.temporal_res == "yearly":
         df = duckdb.execute(f"""
