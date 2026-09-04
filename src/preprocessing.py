@@ -20,7 +20,8 @@ def main(cfg):
     year = int(str(cfg.year)[:4])
     cfg_vg = cfg.var_group
 
-    input_fname = f"{cfg.input_dir}/{cfg_vg.lego_dir}/{cfg_vg.lego_nm}__{year}.parquet"
+    year_sep = cfg_vg.get("lego_year_sep", "__")
+    input_fname = f"{cfg.input_dir}/{cfg_vg.lego_dir}/{cfg_vg.lego_nm}{year_sep}{year}.parquet"
 
     out_dir = f"{cfg.output_dir}/{cfg.vg_name}/{cfg.var}"
     os.makedirs(out_dir, exist_ok=True)
@@ -59,10 +60,12 @@ def main(cfg):
         arr[months, rows] = vals
     elif cfg.temporal_res == "daily":
         n_days = 366 if calendar.isleap(year) else 365
+        # date column name is configurable per var_group (some datasets call it `day`)
+        date_col = cfg_vg.get("date_col", "date")
         df = duckdb.execute(f"""
-            SELECT {cfg.spatial_res} AS zcta, date, {cfg.var} AS val
+            SELECT {cfg.spatial_res} AS zcta, {date_col} AS date, {cfg.var} AS val
             FROM read_parquet('{input_fname}')
-            WHERE date >= DATE '{year}-01-01' AND date <= DATE '{year}-12-31'
+            WHERE {date_col} >= DATE '{year}-01-01' AND {date_col} <= DATE '{year}-12-31'
         """).df()
         mapped = df["zcta"].map(z2i).fillna(-1).astype(np.int64).to_numpy()  # -1 = zcta not in idx2zcta
         keep = mapped >= 0

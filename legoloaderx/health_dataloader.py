@@ -33,6 +33,7 @@ class HealthDataset(Dataset):
         min_year=2000,
         max_year=2020,
         min_bene=10,
+        sliding_window=1,
     ):
         assert delta_t is not None and delta_t >= 0, "delta_t must be a non-negative integer"
         self.root_dir = root_dir
@@ -47,7 +48,8 @@ class HealthDataset(Dataset):
 
         all_dates = pd.date_range(f"{min_year}-01-01", f"{max_year}-12-31", freq="D")
         self.yyyymmdd = [f"{d.year}{d.month:02d}{d.day:02d}" for d in all_dates]
-        self.lead_dates = self.yyyymmdd[window - 1:-delta_t] if delta_t > 0 else self.yyyymmdd[window - 1:]
+        dense = self.yyyymmdd[window - 1:-delta_t] if delta_t > 0 else self.yyyymmdd[window - 1:]
+        self.lead_dates = dense[::sliding_window]
 
         # Resolve requested nodes -> stored column index once, via the canonical order.
         idx2zcta = pd.read_parquet(f"{root_dir}/idx2zcta.parquet")["zcta"].tolist()

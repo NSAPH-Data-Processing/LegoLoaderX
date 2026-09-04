@@ -26,6 +26,7 @@ class HealthXDataset(Dataset):
         summary_stats=None,
         min_year=2000,
         max_year=2020,
+        sliding_window=1,
     ):
         self.root_dir = root_dir
         self.var_dict = var_dict
@@ -42,6 +43,7 @@ class HealthXDataset(Dataset):
             delta_t=delta_t,
             min_year=min_year,
             max_year=max_year,
+            sliding_window=sliding_window,
         )
         self.delta_t = self.outcomes_dataset.delta_t
 

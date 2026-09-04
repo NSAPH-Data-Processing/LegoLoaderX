@@ -1,0 +1,18 @@
+var_group_name: pm25_components_randall
+vars: [Bc, Dust, Nh4, No3, Om, So4, Ss]
+descriptions:
+  bc: Black Carbon concentration (μg/m³)
+  dust: Dust concentration (μg/m³)
+  nh4: Ammonium concentration (μg/m³)
+  no3: Nitrate concentration (μg/m³)
+  om: Organic Matter concentration (μg/m³)
+  so4: Sulfate concentration (μg/m³)
+  ss: Sea Salt concentration (μg/m³)
+min_year: 2000
+max_year: 2023
+valid_normalize: true
+min_spatial_res: zcta
+min_temporal_res: monthly
+lego_nm: pm25_components__randall__V6NA_zcta_monthly
+lego_dir: lego/environmental/pm25_components__randall/V6NA/zcta_monthly/
+lego_year_sep: "_"
