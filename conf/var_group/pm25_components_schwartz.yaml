@@ -1,0 +1,25 @@
+var_group_name: pm25_components_schwartz
+vars: [Br, Ca, Cu, Ec, Fe, K, Nh4, Ni, No3, Oc, Pb, Si, So4, V, Zn]
+descriptions:
+  br: Bromine concentration (μg/m³)
+  ca: Calcium concentration (μg/m³)
+  cu: Copper concentration (μg/m³)
+  ec: Elemental Carbon concentration (μg/m³)
+  fe: Iron concentration (μg/m³)
+  k: Potassium concentration (μg/m³)
+  nh4: Ammonium concentration (μg/m³)
+  ni: Nickel concentration (μg/m³)
+  no3: Nitrate concentration (μg/m³)
+  oc: Organic Carbon concentration (μg/m³)
+  pb: Lead concentration (μg/m³)
+  si: Silicon concentration (μg/m³)
+  so4: Sulfate concentration (μg/m³)
+  v: Vanadium concentration (μg/m³)
+  zn: Zinc concentration (μg/m³)
+min_year: 2000
+max_year: 2019
+valid_normalize: true
+min_spatial_res: zcta
+min_temporal_res: yearly
+lego_nm: pm25_components__schwartz__zcta_yearly
+lego_dir: lego/environmental/pm25_components__schwartz/zcta_yearly/
