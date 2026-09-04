@@ -1,0 +1,26 @@
+var_group_name: prism
+# NOTE ON COVERAGE: this PRISM extraction is a Massachusetts-area pilot, not a national
+# product -- it holds 500 zctas (2000-2009) / 536 zctas (2010-2016) out of the 33,512 in
+# idx2zcta.parquet. The resulting .npy are therefore ~98.5% NaN by construction. The zcta
+# ids themselves match idx2zcta (99.4% / 100% of source zctas are found), so this is a
+# domain limitation of the extraction, not an id-vintage mismatch.
+# Only population_weighted/zcta_yearly is usable: the zcta_daily variant names its time
+# column "day", and src/preprocessing.py's daily branch requires a column named "date".
+vars: [tmax_C, tmin_C, tmean_C, tdmean_C, ppt, vpdmax, vpdmin, solslope, soltotal]
+descriptions:
+  tmax_C: "Annual average of the daily maximum near-surface air temperature, in degrees Celsius."
+  tmin_C: "Annual average of the daily minimum near-surface air temperature, in degrees Celsius."
+  tmean_C: "Annual average of the daily mean near-surface air temperature, in degrees Celsius."
+  tdmean_C: "Annual average of the daily mean dew point, the temperature at which the air would saturate, in degrees Celsius."
+  ppt: "Average daily precipitation over the year, counting rain and melted snow together, in millimeters of water depth per day."
+  vpdmax: "Annual average of the daily maximum vapor pressure deficit, the peak drying power of the air, in hectopascals."
+  vpdmin: "Annual average of the daily minimum vapor pressure deficit, the lowest drying power of the air, in hectopascals."
+  solslope: "Annual average of the daily total shortwave solar energy reaching a terrain-following sloped surface, in megajoules per square meter per day."
+  soltotal: "Annual average of the daily total shortwave solar energy reaching a flat horizontal surface, in megajoules per square meter per day."
+valid_normalize: true
+min_year: 2000
+max_year: 2016
+min_spatial_res: zcta
+min_temporal_res: yearly
+lego_nm: meteorology__prism__zcta_yearly
+lego_dir: lego/environmental/meteorology__prism/population_weighted/zcta_yearly/

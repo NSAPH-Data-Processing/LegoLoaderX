@@ -1,4 +1,9 @@
-var_groups: [gridmet, pm25_ushap, census, climate_types, aqdh, pm25_components_schwartz, pm25_components_randall, wildfire_childs]
+var_groups: [gridmet, pm25_ushap, census, climate_types, aqdh, pm25_components_schwartz, pm25_components_randall, wildfire_childs,
+              pm25_schwartz, pm25_randall, prism]
+# Global year window. Each var_group is clamped to this range by snakefile.smk
+# (y0 = max(min_year, vg.min_year), y1 = min(max_year, vg.max_year)), so a source
+# with data outside 2000-2020 is silently truncated -- currently that is
+# pm25_randall (real coverage 1998-2023). Widen here to pick those years up.
 min_year: 2000
 max_year: 2020
 max_days: null # just for testing purposes
