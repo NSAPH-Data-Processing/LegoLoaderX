@@ -22,4 +22,5 @@ valid_normalize: true
 min_spatial_res: zcta
 min_temporal_res: yearly
 lego_nm: pm25_components__schwartz__zcta_yearly
+zcta_float_ids: true # source stores zcta as "1011.0" rather than "01011"
 lego_dir: lego/environmental/pm25_components__schwartz/zcta_yearly/
