@@ -1,4 +1,4 @@
-var_groups: [gridmet, pm25_ushap, aqdh, census, climate_types]
+var_groups: [gridmet, pm25_ushap, aqdh, census, climate_types, synth_exposure]
 min_year: 2000
 max_year: 2010
 # covariate read root (XDataset root): holds idx2zcta.parquet + {var_group}/{var}/...

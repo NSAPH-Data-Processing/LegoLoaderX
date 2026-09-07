@@ -30,6 +30,227 @@ synthetic:
   population_path: data/input/lego/social/demographics__census/raw/core/zcta__dec__population.parquet
 
   var_name: test
+
+  # Semi-synthetic causal exposure: the outcome rate gets a known `beta * exposure` term so
+  # the ERC / g-computation pipeline can be validated against ground truth. `exposure` is a
+  # REAL covariate read from the dense store (data/covars), so training later sees exactly the
+  # values that generated the outcome. `beta` IS the ground-truth dose-response. Set beta: 0
+  # to disable and recover the original exposure-free behaviour.
+  # PRIMARY EXPOSURE (the ERC target): raw PM2.5, coefficient = beta = ground-truth dose-response.
+  # This is exposure #1 of the 5 environmental exposures (the other 4 are in the list below).
+  beta: 0.01
+  exposure_covars_root: data/covars
+
+  # WHERE THE 5 ENVIRONMENTAL EXPOSURES COME FROM -- one switch, two worlds. Both the primary
+  # exposure and the 4 daily environmental terms below read these two var_groups, so flipping the
+  # pair swaps the whole exposure arm without touching the confounder list.
+  #   REAL (default): exposure_group=pm25_ushap, env_group=gridmet, exposure_generation.enabled=false
+  #     -> the outcome is generated from the REAL PM2.5 / gridMET the model already reads under
+  #        exactly those names (climhealth-fm conf/var_dict/lego.yaml), so the model trains on the
+  #        very numbers that produced the outcome with NO change on the model side. The
+  #        confounder->exposure arm is then whatever the real data happens to contain (uncontrolled).
+  #   GENERATED: exposure_group=synth_exposure, env_group=synth_exposure, exposure_generation.enabled=true
+  #     -> src/synthetic_exposure.py writes exposures with R^2(exposure ~ confounders) ~ f_drivers,
+  #        so the confounding strength is known by construction. Requires the model-side var_dict to
+  #        point at synth_exposure, otherwise the model reads real PM2.5 and the outcome was made
+  #        from a different field -- silent, and fatal to the ground truth.
+  exposure_group: pm25_ushap
+  env_group: gridmet
+
+  exposure_var_group: ${synthetic.exposure_group}
+  exposure_var: PM25
+
+  # Every entry below adds `gamma * standardized(var)` to the outcome rate (gamma is the ground
+  # truth). The generator does not distinguish exposures from confounders -- they are all additive
+  # terms -- but they are grouped here by their ROLE so the dataloader can split them:
+  #   * EXPOSURES/treatments (environmental, daily): 4 gridmet terms; with PM2.5 above = 5 exposures.
+  #   * CONFOUNDERS (census + climate, yearly): 12 confounders, correlated with the exposures.
+  # No aqdh (NO2/O3) here, so every var has data through 2020 -> usable range is 2010-2020.
+  # A naive PM2.5-outcome fit is biased; the ERC model must adjust for ALL of these to recover beta.
+  confounders:
+    # --- 4 more environmental EXPOSURES (daily) -> with PM2.5 above = 5 exposures ---
+    # var_group follows synthetic.env_group (gridmet = real, synth_exposure = generated), so these
+    # always come from the same world as the primary exposure. They enter the outcome STANDARDIZED,
+    # so their scale is irrelevant.
+    - {var_group: "${synthetic.env_group}", var: tmmx, gamma:  0.015, temporal_res: daily}   # max temperature
+    - {var_group: "${synthetic.env_group}", var: rmax, gamma:  0.010, temporal_res: daily}   # max relative humidity
+    - {var_group: "${synthetic.env_group}", var: pr,   gamma: -0.008, temporal_res: daily}   # precipitation
+    - {var_group: "${synthetic.env_group}", var: vs,   gamma: -0.008, temporal_res: daily}   # wind speed (disperses pollution)
+    # --- 12 CONFOUNDERS (census + climate, yearly) ---
+    - {var_group: census,        var: median_household_income,       gamma: -0.020, temporal_res: yearly}
+    - {var_group: census,        var: pop_poverty,                   gamma:  0.030, temporal_res: yearly}
+    - {var_group: census,        var: median_home_value,             gamma: -0.010, temporal_res: yearly}
+    - {var_group: census,        var: pop_higher_education_attained, gamma: -0.015, temporal_res: yearly}
+    - {var_group: census,        var: pop_over_65_years,             gamma:  0.030, temporal_res: yearly}
+    - {var_group: census,        var: pop_under_20_years,            gamma: -0.010, temporal_res: yearly}
+    - {var_group: census,        var: pop_black,                     gamma:  0.015, temporal_res: yearly}
+    - {var_group: census,        var: pop_hispanic,                  gamma:  0.010, temporal_res: yearly}
+    - {var_group: census,        var: pop_non_us_citizen,            gamma:  0.008, temporal_res: yearly}
+    - {var_group: census,        var: housing_renter_occupied,       gamma:  0.010, temporal_res: yearly}
+    # WARNING: every climate_types var in the store is identically ZERO (verified for all 30 vars,
+    # nanmax == 0), so these two terms contribute nothing to the rate whatever gamma says --
+    # _load_covar_aligned standardizes with std == 0 and yields all-zeros. They are DEAD terms:
+    # harmless for identification (there is no confounding to adjust away), but do not read them as
+    # "the model must adjust for climate". They were also drivers in exposure_generation, so that
+    # block's intended climate->exposure structure never materialized either. Fix the upstream
+    # climate_types preprocessing before relying on them.
+    - {var_group: climate_types, var: pct_cfa,                       gamma:  0.010, temporal_res: yearly}  # humid subtropical (SE)
+    - {var_group: climate_types, var: pct_dfa,                       gamma:  0.008, temporal_res: yearly}  # humid continental (NE/Midwest)
+
+  # SYNTHETIC EXPOSURE GENERATION (src/synthetic_exposure.py). Generate the 5 environmental exposures
+  # (PM2.5 + 4 gridmet) as treatment-assignment models with a KNOWN dependence on the confounders, so
+  # the confounder->treatment arm of the confounding is controlled. Each exposure:
+  #   T_e = target_mean + target_sd * ( sqrt(f_drivers)*z(f_e(X)) + sqrt(f_struct)*z(SAR_rho AR_phi noise)
+  #                                     + sqrt(1-f_drivers-f_struct)*z(iid noise) )
+  # so OLS(exposure ~ confounders) has R^2 ~ f_drivers by construction. Written to
+  # <exposure_covars_root>/<var_group>/<var>/<var>__<year>.npy (same format the DGP + dataloader read).
+  # Set enabled:false to fall back to reading real covariates. This block does NOT affect the do(exp=a)
+  # ground-truth ERC (which overrides the exposure and reads confounders from disk) -- see the module.
+  exposure_generation:
+    # false = the REAL-exposure world (see synthetic.exposure_group above). Flip to true ONLY
+    # together with exposure_group=env_group=synth_exposure.
+    enabled: false
+    base_seed: 12345
+    method: knn                  # neighbour graph for the spatial (SAR) structure
+    k: 8
+    length_scale_km: null
+    # drivers = the 12 real census/climate confounders that push the exposures around (standardized).
+    drivers:
+      - {var_group: census,        var: median_household_income,       temporal_res: yearly}
+      - {var_group: census,        var: pop_poverty,                   temporal_res: yearly}
+      - {var_group: census,        var: median_home_value,             temporal_res: yearly}
+      - {var_group: census,        var: pop_higher_education_attained, temporal_res: yearly}
+      - {var_group: census,        var: pop_over_65_years,             temporal_res: yearly}
+      - {var_group: census,        var: pop_under_20_years,            temporal_res: yearly}
+      - {var_group: census,        var: pop_black,                     temporal_res: yearly}
+      - {var_group: census,        var: pop_hispanic,                  temporal_res: yearly}
+      - {var_group: census,        var: pop_non_us_citizen,            temporal_res: yearly}
+      - {var_group: census,        var: housing_renter_occupied,       temporal_res: yearly}
+      - {var_group: climate_types, var: pct_cfa,                       temporal_res: yearly}
+      - {var_group: climate_types, var: pct_dfa,                       temporal_res: yearly}
+    # one entry per synthetic exposure. var_group must match exposure_var_group / the confounder rows
+    # above (synth_exposure). f_drivers is the target R^2 of exposure on the confounders (~0.6 = strong).
+    # PM2.5 is the ERC target: keep it on a realistic scale (mean~10, sd~5, clipped >=0) so beta stays
+    # calibrated. The 4 gridmet enter standardized, so their mean/sd are cosmetic.
+    exposures:
+      - name: PM25
+        var_group: synth_exposure
+        target_mean: 10.0
+        target_sd: 5.0
+        nonnegative: true
+        f_drivers: 0.6
+        f_struct: 0.2
+        rho: 0.7
+        phi: 0.9
+        weights: {pop_poverty: 1.0, pop_black: 0.6, pop_hispanic: 0.5, housing_renter_occupied: 0.5,
+                  pop_over_65_years: 0.3, median_household_income: -0.8, median_home_value: -0.5,
+                  pop_higher_education_attained: -0.6}
+      - name: tmmx
+        var_group: synth_exposure
+        target_mean: 0.0
+        target_sd: 1.0
+        nonnegative: false
+        f_drivers: 0.6
+        f_struct: 0.2
+        rho: 0.7
+        phi: 0.95
+        weights: {pct_cfa: 1.0, pct_dfa: -0.8, pop_over_65_years: 0.3, pop_under_20_years: 0.2}
+      - name: rmax
+        var_group: synth_exposure
+        target_mean: 0.0
+        target_sd: 1.0
+        nonnegative: false
+        f_drivers: 0.6
+        f_struct: 0.2
+        rho: 0.6
+        phi: 0.9
+        weights: {pct_cfa: 1.0, pct_dfa: 0.3, median_household_income: -0.2}
+      - name: pr
+        var_group: synth_exposure
+        target_mean: 0.0
+        target_sd: 1.0
+        nonnegative: false
+        f_drivers: 0.6
+        f_struct: 0.2
+        rho: 0.5
+        phi: 0.7
+        weights: {pct_dfa: 0.8, pct_cfa: 0.6, median_home_value: 0.2}
+      - name: vs
+        var_group: synth_exposure
+        target_mean: 0.0
+        target_sd: 1.0
+        nonnegative: false
+        f_drivers: 0.6
+        f_struct: 0.2
+        rho: 0.5
+        phi: 0.6
+        weights: {pct_dfa: 0.5, pop_poverty: -0.2, pop_over_65_years: 0.2}
+
+  # Spatial + temporal coupling of the latent Poisson rate (src/synthetic_spacetime.py). Applied to
+  # the PRE-floor rate inside expected_rate_grid, so the generator AND the ground-truth ERC see it.
+  # BACKWARD COMPAT: rho=0, phi=0 (or omit this whole block) reproduces the original DGP EXACTLY,
+  # byte-for-byte -- no spatial/temporal coupling. The normalize/method/k/length_scale_km fields are
+  # then irrelevant and do not affect output.
+  #   * rho  in [0,1): spatial SAR weight -- ZCTA i's rate blends in its neighbours' rates via a
+  #                    row-normalized neighbour matrix W. 0 = no spatial coupling.
+  #   * phi  in [0,1): temporal AR(1)/EWMA weight -- today's rate blends in its own recent past;
+  #                    influence of l days ago decays as (1-phi)*phi^l. Half-life in days is
+  #                    ln(0.5)/ln(phi)  (helpers phi_to_halflife / halflife_to_phi). E.g. phi=0.79
+  #                    ~ 3-day half-life, phi=0.93 ~ 10-day. 0 = no temporal coupling.
+  #   * normalize: true  -> mean-preserving (rate stays low, exposure ERC slope UNCHANGED).
+  #                false -> exposure slope amplified by 1/((1-rho)*(1-phi)) (still exact/closed-form).
+  #   * method/k/length_scale_km: neighbour graph. 'knn' = k nearest centroids (uniform); 'distance'
+  #                    = exp(-dist_km/length_scale_km) weights (closer counts more, null = auto-median).
+  # rho=phi=0 (or omitting this block) is a no-op: byte-identical to the uncoupled DGP.
+  spacetime:
+    rho: 0.0                # spatial neighbour weight in [0, 1)
+    phi: 0.0                # temporal memory weight in [0, 1); half-life = ln(0.5)/ln(phi) days
+    normalize: true         # true = mean-preserving; false = amplify exposure slope by 1/((1-rho)(1-phi))
+    method: knn             # 'knn' | 'distance' (centroid-based) | 'queen'/'rook' (libpysal contiguity)
+    k: 8                    # number of nearest neighbours
+    length_scale_km: null   # only used by method='distance'; null = median neighbour distance
+
+  # Exposure-response-curve settings (read by ground_truth_erc.py). Declared here so they can be
+  # overridden on the CLI, e.g. synthetic.erc.output_dir=/n/dominici_lab/.../erc_outputs to keep the
+  # (small) ground-truth curve off the home disk.
+  erc:
+    output_dir: outputs           # where to write erc_ground_truth_<var>_<year>.csv (+ .meta.json)
+    node_aggregation: mean        # collapse over nodes: 'mean' (per-node average) or 'sum'
+    # forecast_start / forecast_len: forecast days T_fc summed per node (default: the whole year)
+    # grid: {x_min, x_max, n_points}  # optional fixed exposure grid (default: 1st-99th pct of PM2.5)
+
+  # ROLLING-FORECAST g-computation ground truth (read by src/ground_truth_gcomp.py). This is the
+  # window-aware estimand -- a forecast start day t0 swept over the year, a whole (window x
+  # n_forecast) block of predictions summed off each -- as opposed to `erc` above, which sums each
+  # calendar day exactly once. Use this one to score the model; see the module docstring.
+  gcomp:
+    mode: shift                   # 'shift' -> G(delta), G(1)=factual | 'level' -> do(exposure=a) ERC
+    intervention_scope: window    # 'window' = only the sample's own A^(t0) is scaled (the literal
+                                  # estimand); 'global' = the whole exposure field is scaled.
+    shift_space: raw              # 'raw' -> X -> delta*X | 'standardized' -> X -> mean + delta*(X-mean),
+                                  # which is what multiplying the loader's normalized channel does.
+    # MUST match the model run being scored: dataset.window and model.max_forecast_steps in
+    # climhealth-fm/conf/config.yaml (currently 3 and 5).
+    window: 3
+    n_forecast: 5
+    t0_start: 0
+    t0_end: null                  # exclusive; null + drop_incomplete => every window fits in the year
+    drop_incomplete: true
+    node_aggregation: mean
+    n_points: 25
+    delta_min: 0.5                # shift mode: delta grid
+    delta_max: 1.5
+    # grid: {x_min, x_max, n_points}   # level mode: fixed exposure grid (default 1st-99th pct)
+    output_dir: outputs
+
+  # Diagnostics (logging ONLY -- not part of the DGP / ground truth, not in the manifest DGP_KEYS).
+  # When true, the generator (and the smoke run, src/synthetic_smoke.py) logs the distribution of the
+  # per-cell rate lambda: percentiles, the fraction pinned at rate_floor, and the implied count
+  # sparsity -- so you can see whether lambda stays low before committing to a full run.
+  diagnostics:
+    lambda_distribution: false    # log the lambda percentiles / % at floor / implied sparsity
+    plot_path: null               # smoke run: PNG histogram path; null = outputs/lambda_hist_<var>_<year>.png
+
   poisson_params:
     base_rate: 0.11
     seasonal_amplitude: 0.02
@@ -39,6 +260,7 @@ synthetic:
     population_effect: 0.0001
     population_normalizer: 0.0003  # Population scaling factor (per capita effect)
     random_seed: 42
+    rate_floor: 0.01               # lower clamp on the per-capita rate: lambda = max(rate_floor, ...)
 
   # Geographic constraints
   mainland_only: true           # Filter for continental US only
