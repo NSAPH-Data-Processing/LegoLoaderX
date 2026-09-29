@@ -9,14 +9,14 @@ input_dir: data/input
 output_dir: data/health
 
 min_year: 2000
-max_year: 2014
+max_year: 2021
 valid_normalize: false
 min_spatial_res: zcta
 min_temporal_res: daily
 
-vg_name: ccw
-lego_prefix: sparse_counts
-lego_dir: lego/medicare/
+vg_name: francesca_claudio_00 #ccw
+lego_prefix: counts #parquet input prefix
+lego_dir: lego/medicare/ #parquet input path
 
 hydra:
   run:

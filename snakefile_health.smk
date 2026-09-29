@@ -7,6 +7,7 @@ configfile: "conf/health/snakemake.yaml"
 # Get config values
 years = config["years"]
 vars = config["vars"]
+vg_name = config["vg_name"]
 
 # Get paths
 if config["use_synthetic"]:
@@ -22,7 +23,7 @@ rule all:
     input:
         "data/health/idx2zcta.parquet",
         expand(
-            f"data/health/ccw/{{var}}/{{var}}__{{year}}.npy",
+            f"data/health/{vg_name}/{{var}}/{{var}}__{{year}}.npy",
             var=vars,
             year=years
         ),
@@ -45,7 +46,7 @@ rule preprocess_health:
     input:
         "data/health/idx2zcta.parquet"
     output:
-        f"data/health/ccw/{{var}}/{{var}}__{{year}}.npy"
+        f"data/health/{vg_name}/{{var}}/{{var}}__{{year}}.npy"
     params:
         lego_dir = lego_dir,
     shell:
