@@ -18,6 +18,12 @@ vg_name: francesca_claudio_00 #ccw
 lego_prefix: counts #parquet input prefix
 lego_dir: lego/medicare/ #parquet input path
 
+# Denominator input
+denom_dir: mbsf_medpar_denom
+denom_temporal_res: yearly
+denom_prefix: counts
+denom_value_col: n_bene
+
 hydra:
   run:
     dir: logs/dataloader/${now:%Y-%m-%d}/${now:%H-%M-%S}

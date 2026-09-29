@@ -24,18 +24,26 @@ def main(cfg):
     consistent with the covariate/outcome mmaps without a magic sentinel.
     """
     year = str(cfg.year)
-    denom_path = f"{cfg.input_dir}/{cfg.lego_dir}/mbsf_medpar_denom/{cfg.min_spatial_res}_yearly/counts_{year}.parquet"
+    denom_resolution = f"{cfg.min_spatial_res}_{cfg.denom_temporal_res}"
+    denom_path = (
+        f"{cfg.input_dir}/{cfg.lego_dir}/"
+        f"{cfg.denom_dir}/{denom_resolution}/"
+        f"{cfg.denom_prefix}_{year}.parquet"
+    )
 
     LOGGER.info(f"Reading denominator data from {denom_path}")
-    denom_df = pq.read_table(denom_path, columns=['zcta', 'n_bene']).to_pandas()
+    denom_df = pq.read_table(
+        denom_path,
+        columns=[cfg.min_spatial_res, cfg.denom_value_col]
+    ).to_pandas()
 
     idx2zcta = pd.read_parquet(f"{cfg.output_dir}/idx2zcta.parquet")["zcta"].tolist()
     z2i = {z: i for i, z in enumerate(idx2zcta)}
 
-    mapped = denom_df["zcta"].map(z2i).fillna(-1).astype(np.int64).to_numpy()  # -1 = zcta not in idx2zcta
+    mapped = denom_df[cfg.min_spatial_res].map(z2i).fillna(-1).astype(np.int64).to_numpy() # -1 = zcta not in idx2zcta
     keep = mapped >= 0
     rows = mapped[keep]
-    vals = denom_df["n_bene"].to_numpy(dtype=np.float32)[keep]
+    vals = denom_df[cfg.denom_value_col].to_numpy(dtype=np.float32)[keep]
 
     arr = np.full((len(idx2zcta),), np.nan, dtype=np.float32)
     arr[rows] = vals
