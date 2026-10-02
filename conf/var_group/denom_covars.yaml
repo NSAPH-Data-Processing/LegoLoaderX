@@ -1,0 +1,65 @@
+var_group_name: denom_covars
+
+vars:
+  - n_dead
+  - death_rate
+  - female_pct
+#  - male_pct
+  - dual_pct
+#  - hmo_pct
+#  - buyin_pct
+  - mean_age
+  - age_65_75_pct
+  - age_76_85_pct
+  - age_86_95_pct
+  - age_96_105_pct
+#  - age_106_115_pct
+  - race_white_pct
+  - race_black_pct
+  - race_hispanic_pct
+  - race_asian_pct
+  - race_rti_unknown_pct
+  - race_rti_white_pct
+  - race_rti_black_pct
+  - race_rti_other_pct
+  - race_rti_asian_pct
+  - race_rti_hispanic_pct
+  - race_rti_ai_an_pct
+
+descriptions:
+  n_dead: "Number of Medicare beneficiaries who died during the year."
+  death_rate: "Annual mortality rate among Medicare beneficiaries in the area."
+  female_pct: "Percentage of Medicare beneficiaries who are female."
+  male_pct: "Percentage of Medicare beneficiaries who are male."
+  dual_pct: "Percentage of Medicare beneficiaries with dual Medicare and Medicaid eligibility."
+  hmo_pct: "Percentage of Medicare beneficiaries enrolled in a health maintenance organization."
+  buyin_pct: "Percentage of Medicare beneficiaries with state Medicaid buy-in coverage."
+  mean_age: "Mean age of Medicare beneficiaries in years."
+  age_65_75_pct: "Percentage of Medicare beneficiaries aged 65 through 75 years."
+  age_76_85_pct: "Percentage of Medicare beneficiaries aged 76 through 85 years."
+  age_86_95_pct: "Percentage of Medicare beneficiaries aged 86 through 95 years."
+  age_96_105_pct: "Percentage of Medicare beneficiaries aged 96 through 105 years."
+  age_106_115_pct: "Percentage of Medicare beneficiaries aged 106 through 115 years."
+  race_white_pct: "Percentage of Medicare beneficiaries identified as White."
+  race_black_pct: "Percentage of Medicare beneficiaries identified as Black."
+  race_hispanic_pct: "Percentage of Medicare beneficiaries identified as Hispanic."
+  race_asian_pct: "Percentage of Medicare beneficiaries identified as Asian."
+  race_rti_unknown_pct: "Percentage of Medicare beneficiaries with unknown race or ethnicity under the RTI race classification."
+  race_rti_white_pct: "Percentage of Medicare beneficiaries classified as White under the RTI race classification."
+  race_rti_black_pct: "Percentage of Medicare beneficiaries classified as Black under the RTI race classification."
+  race_rti_other_pct: "Percentage of Medicare beneficiaries classified as another race or ethnicity under the RTI race classification."
+  race_rti_asian_pct: "Percentage of Medicare beneficiaries classified as Asian under the RTI race classification."
+  race_rti_hispanic_pct: "Percentage of Medicare beneficiaries classified as Hispanic under the RTI race classification."
+  race_rti_ai_an_pct: "Percentage of Medicare beneficiaries classified as American Indian or Alaska Native under the RTI race classification."
+
+valid_normalize: true
+
+min_year: 2000
+max_year: 2021
+
+min_spatial_res: zcta
+min_temporal_res: yearly
+
+lego_dir: lego/medicare/mbsf_medpar_denom/zcta_yearly
+lego_nm: counts
+lego_year_sep: "_"
